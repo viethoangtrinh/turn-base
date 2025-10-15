@@ -21,15 +21,15 @@
           <!-- Filled by JS with default: VH, HA, Tân, DyT, TĐ -->
         </ul>
         <div class="actions">
-          <button id="reset-default" class="secondary">
-            Mặc định 1-2-3-4-5
-          </button>
           <button id="start-game" class="primary">Bắt đầu</button>
         </div>
       </section>
 
       <section id="game" class="hidden">
-        <h2>Đang chơi</h2>
+        <div class="game-header">
+          <div class="match-info">Trận <span id="match-number">1</span></div>
+          <button id="action-back" class="btn-exit">Thoát</button>
+        </div>
         <div class="order-wrap">
           <div class="order-header">Thứ tự hiện tại</div>
           <div class="round-line">
@@ -41,20 +41,28 @@
         </div>
 
         <p class="hint">
-          - Chạm vào tên: đánh dấu <strong>lỗi</strong>. Nhấn giữ 5s:
-          <strong>thắng</strong>. - Chạm vào badge <strong>Vòng</strong> để xác
-          nhận sang vòng mới khi bạn biết đã hết 1 vòng.
+          - Chạm vào tên: đánh dấu <strong>lỗi</strong><br />
+          - Nhấn giữ 3s: <strong>thắng</strong>
         </p>
-
-        <div class="actions minor">
-          <button id="action-back" class="secondary">Quay về thiết lập</button>
-        </div>
 
         <div class="log-wrap">
           <div class="order-header">Lịch sử</div>
           <ul id="log" class="log"></ul>
         </div>
       </section>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="confirm-modal" class="modal hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-title" id="confirm-title">Xác nhận</div>
+        <div class="modal-message" id="confirm-message"></div>
+        <div class="modal-actions">
+          <button id="confirm-cancel" class="modal-btn secondary">Hủy</button>
+          <button id="confirm-ok" class="modal-btn primary">Xác nhận</button>
+        </div>
+      </div>
     </div>
 
     <script src="/app.js"></script>

@@ -6,8 +6,14 @@
   const setupSection = document.getElementById("setup");
   const gameSection = document.getElementById("game");
   const playerList = document.getElementById("player-list");
-  const resetDefaultBtn = document.getElementById("reset-default");
   const startBtn = document.getElementById("start-game");
+
+  // Modal elements
+  const confirmModal = document.getElementById("confirm-modal");
+  const confirmTitle = document.getElementById("confirm-title");
+  const confirmMessage = document.getElementById("confirm-message");
+  const confirmOkBtn = document.getElementById("confirm-ok");
+  const confirmCancelBtn = document.getElementById("confirm-cancel");
 
   const currentOrderEl = document.getElementById("current-order");
   const currentPlayerEl = document.getElementById("current-player");
@@ -27,9 +33,13 @@
   // Round/match state
   let movesCount = 0; // number of turns taken in current match
   let roundNumber = 1;
+  let matchNumber = 0; // Số trận đấu
   let actedThisRound = new Set(); // player names who have acted this round
   let erroredThisRound = new Set(); // player names who have errored this round
   let roundStarterName = null; // player name who started the current round
+  let lastActedPlayer = null; // Người vừa đánh xong gần nhất (không reset khi chuyển vòng)
+  let lastRoundLastPlayer = null; // Người cuối cùng của vòng trước
+  let lastRoundErrors = new Set(); // Những người lỗi ở vòng trước
 
   // ---------- Helpers ----------
   const renderSetupList = () => {
@@ -54,7 +64,7 @@
       li.innerHTML = `
         <span class="idx">${i + 1}</span>
         <span class="pill tappable" data-name="${name}">${name}</span>
-        ${i === currentIndex ? '<span class="tag">Đang lượt</span>' : ""}
+        ${i === currentIndex ? '<span class="tag">Tới lượt</span>' : ""}
       `;
       if (i === currentIndex) li.classList.add("active");
       // Tap/Long-press handlers per item
@@ -68,8 +78,8 @@
     const li = document.createElement("li");
     li.textContent = text;
     logEl.prepend(li);
-    // Keep only last 3 entries
-    while (logEl.children.length > 3) {
+    // Keep only last 5 entries
+    while (logEl.children.length > 5) {
       logEl.removeChild(logEl.lastChild);
     }
   };
@@ -88,11 +98,57 @@
     roundStarterName = starterName;
   };
 
+  // Custom confirm dialog (Promise-based)
+  const customConfirm = (message, title = "Xác nhận") => {
+    return new Promise((resolve) => {
+      confirmTitle.textContent = title;
+      confirmMessage.textContent = message;
+      confirmModal.classList.remove("hidden");
+
+      const handleOk = () => {
+        confirmModal.classList.add("hidden");
+        cleanup();
+        resolve(true);
+      };
+
+      const handleCancel = () => {
+        confirmModal.classList.add("hidden");
+        cleanup();
+        resolve(false);
+      };
+
+      const cleanup = () => {
+        confirmOkBtn.removeEventListener("click", handleOk);
+        confirmCancelBtn.removeEventListener("click", handleCancel);
+        confirmModal.removeEventListener("click", handleBackdropClick);
+      };
+
+      const handleBackdropClick = (e) => {
+        if (
+          e.target === confirmModal ||
+          e.target.classList.contains("modal-backdrop")
+        ) {
+          handleCancel();
+        }
+      };
+
+      confirmOkBtn.addEventListener("click", handleOk);
+      confirmCancelBtn.addEventListener("click", handleCancel);
+      confirmModal.addEventListener("click", handleBackdropClick);
+    });
+  };
+
   const maybeAdvanceRound = () => {
     if (order.length === 0) return;
-    const everyoneActed = actedThisRound.size >= order.length;
+    // Vòng mới khi tất cả đã acted (thành công hoặc lỗi)
+    const totalActed = actedThisRound.size;
+    const everyoneActed = totalActed >= order.length;
     if (everyoneActed) {
       roundNumber += 1;
+      // Lưu thông tin vòng trước
+      lastRoundLastPlayer = lastActedPlayer;
+      lastRoundErrors = new Set(erroredThisRound);
+
       // New round starts from the current turn holder
       resetRound(order[currentIndex]);
       const roundNumEl = document.getElementById("round-number");
@@ -105,23 +161,14 @@
     }
   };
 
-  const forceAdvanceRound = () => {
-    // Manual confirmation to proceed to next round
-    if (order.length === 0) return;
-    roundNumber += 1;
-    resetRound(order[currentIndex]);
-    const roundNumEl = document.getElementById("round-number");
-    const roundIndicator = document.getElementById("round-indicator");
-    if (roundNumEl) roundNumEl.textContent = String(roundNumber);
-    if (roundIndicator) {
-      roundIndicator.classList.add("round-ping");
-      setTimeout(() => roundIndicator.classList.remove("round-ping"), 450);
-    }
-    pushLog(`Xác nhận sang vòng ${roundNumber}`);
-  };
-
   // ---------- DnD for setup ----------
   let dragIndex = null;
+  let touchDragEl = null;
+  let touchStartY = 0;
+  let touchCurrentY = 0;
+  let isDragging = false;
+
+  // Desktop drag events
   playerList.addEventListener("dragstart", (e) => {
     const li = e.target.closest("li");
     if (!li) return;
@@ -143,90 +190,188 @@
     renderSetupList();
   });
 
-  // ---------- Actions ----------
-  resetDefaultBtn.addEventListener("click", () => {
-    setupOrder = [...defaultPlayers];
-    renderSetupList();
-  });
+  // Mobile touch events - simpler approach: track hover, swap on drop
+  let lastHoverIndex = null;
 
+  playerList.addEventListener(
+    "touchstart",
+    (e) => {
+      const li = e.target.closest("li");
+      if (!li) return;
+
+      touchDragEl = li;
+      dragIndex = Number(li.dataset.index);
+      lastHoverIndex = dragIndex;
+      touchStartY = e.touches[0].clientY;
+      isDragging = false;
+
+      li.style.transition = "none";
+    },
+    { passive: false }
+  );
+
+  playerList.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!touchDragEl) return;
+
+      e.preventDefault();
+      isDragging = true;
+      touchCurrentY = e.touches[0].clientY;
+      const deltaY = touchCurrentY - touchStartY;
+
+      // Visual feedback only - don't modify array yet
+      touchDragEl.style.transform = `translateY(${deltaY}px)`;
+      touchDragEl.style.opacity = "0.7";
+      touchDragEl.style.zIndex = "1000";
+
+      // Find what we're hovering over
+      touchDragEl.style.pointerEvents = "none";
+      const elementBelow = document.elementFromPoint(
+        e.touches[0].clientX,
+        e.touches[0].clientY
+      );
+      touchDragEl.style.pointerEvents = "";
+
+      const liBelow = elementBelow?.closest("li");
+      if (
+        liBelow &&
+        liBelow !== touchDragEl &&
+        liBelow.dataset.index !== undefined
+      ) {
+        lastHoverIndex = Number(liBelow.dataset.index);
+      }
+    },
+    { passive: false }
+  );
+
+  const finishTouch = (e) => {
+    if (
+      touchDragEl &&
+      isDragging &&
+      lastHoverIndex !== null &&
+      lastHoverIndex !== dragIndex
+    ) {
+      // Perform swap
+      const updated = [...setupOrder];
+      const [moved] = updated.splice(dragIndex, 1);
+      updated.splice(lastHoverIndex, 0, moved);
+      setupOrder = updated;
+      renderSetupList();
+    } else if (touchDragEl) {
+      // Just reset styles
+      touchDragEl.style.transform = "";
+      touchDragEl.style.opacity = "";
+      touchDragEl.style.zIndex = "";
+      touchDragEl.style.transition = "";
+      touchDragEl.style.pointerEvents = "";
+    }
+
+    touchDragEl = null;
+    dragIndex = null;
+    lastHoverIndex = null;
+    isDragging = false;
+  };
+
+  playerList.addEventListener("touchend", finishTouch, { passive: false });
+  playerList.addEventListener("touchcancel", finishTouch, { passive: false });
+
+  // ---------- Actions ----------
   startBtn.addEventListener("click", () => {
     // Initialize a match with the chosen order
     order = [...setupOrder];
     currentIndex = 0;
     movesCount = 0;
     roundNumber = 1;
+    matchNumber = 1; // Bắt đầu trận đầu tiên
+    lastActedPlayer = null; // Reset người đánh gần nhất
+    lastRoundLastPlayer = null;
+    lastRoundErrors = new Set();
     resetRound(order[0]);
     history.push({ type: "start", order: snapshotOrder() });
     logEl.innerHTML = "";
     setupSection.classList.add("hidden");
     gameSection.classList.remove("hidden");
+
     const roundNumEl = document.getElementById("round-number");
     if (roundNumEl) roundNumEl.textContent = String(roundNumber);
-    const roundIndicator = document.getElementById("round-indicator");
-    if (roundIndicator) {
-      roundIndicator.onclick = () => forceAdvanceRound();
-      roundIndicator.addEventListener(
-        "touchstart",
-        (e) => {
-          e.preventDefault();
-          forceAdvanceRound();
-        },
-        { passive: false }
-      );
-    }
+
+    const matchNumEl = document.getElementById("match-number");
+    if (matchNumEl) matchNumEl.textContent = String(matchNumber);
+
     renderOrder();
   });
 
   const handleError = () => {
-    // Error: swap current with previous, then next player is the one after the error turn
+    // Người lỗi: mất lượt trong vòng này, người trước được hưởng lợi (nếu chưa lỗi)
     if (order.length <= 1) return;
     const n = order.length;
     const current = order[currentIndex];
-    const prevIndex = (currentIndex - 1 + n) % n;
-    const nextIndex = (currentIndex + 1) % n;
-    const prevPlayer = order[prevIndex];
-    const nextPlayer = order[nextIndex];
 
-    movesCount += 1;
+    // Đánh dấu người này đã lỗi
     actedThisRound.add(current);
     erroredThisRound.add(current);
+    movesCount += 1;
 
-    // Case: very first move of match errors → NO SWAP, just advance
+    // Trường hợp đặc biệt: Cú đầu tiên của ván (phá bi) bị lỗi → không swap
     if (movesCount === 1) {
-      currentIndex = nextIndex;
-      pushLog(`${current} lỗi`);
+      // Chỉ advance sang người tiếp theo
+      lastActedPlayer = current;
+      currentIndex = (currentIndex + 1) % n;
+      pushLog(`${current} lỗi (phá bi)`);
       maybeAdvanceRound();
       renderOrder();
       return;
     }
 
-    // General rule: swap with previous unless previous has already errored this round
-    if (!erroredThisRound.has(prevPlayer)) {
-      // swap current with previous; advantaged previous plays immediately
-      const tmp = order[prevIndex];
-      order[prevIndex] = order[currentIndex];
+    // Tìm người đánh gần nhất trước người hiện tại
+    // Nếu chưa có ai đánh (đầu vòng mới), lấy người ở vị trí trước trong array
+    const prevIndex = (currentIndex - 1 + n) % n;
+    const candidatePrev = lastActedPlayer || order[prevIndex];
+
+    // Luật: Người vừa đánh trước được hưởng lợi NẾU:
+    // 1. Chưa lỗi trong vòng này
+    // 2. HOẶC nếu là người cuối vòng trước, phải chưa lỗi ở vòng trước
+    const erroredInCurrentRound = erroredThisRound.has(candidatePrev);
+    const isLastPlayerOfPrevRound = candidatePrev === lastRoundLastPlayer;
+    const erroredInPrevRound = lastRoundErrors.has(candidatePrev);
+
+    const shouldSwap =
+      !erroredInCurrentRound &&
+      !(isLastPlayerOfPrevRound && erroredInPrevRound);
+
+    if (shouldSwap) {
+      // Previous được hưởng lợi → swap và được đánh lại
+      const prevIdx = order.indexOf(candidatePrev);
+      const tmp = order[prevIdx];
+      order[prevIdx] = order[currentIndex];
       order[currentIndex] = tmp;
-      // keep currentIndex pointing at advantaged player (now at currentIndex)
+
+      // Update currentIndex to point to the advantaged player
+      currentIndex = prevIdx;
+
+      pushLog(`${current} lỗi → ${candidatePrev} được đánh lại`);
     } else {
-      // previous already errored → swap with next; advantaged next plays immediately
-      const tmp = order[nextIndex];
-      order[nextIndex] = order[currentIndex];
-      order[currentIndex] = tmp;
-      // keep currentIndex pointing to the advantaged player now at currentIndex
+      // Previous đã lỗi → không được hưởng lợi, advance
+      currentIndex = (currentIndex + 1) % n;
+      pushLog(`${current} lỗi`);
     }
 
-    pushLog(`${current} lỗi`);
+    lastActedPlayer = current; // Track người vừa lỗi
     maybeAdvanceRound();
     renderOrder();
   };
 
   const handleWin = () => {
-    // Winner is the current player; rotate order so winner goes first for next match
+    // Người thắng: kết thúc ván, người thắng lên đầu cho ván mới
     const winnerIndex = currentIndex;
     const winner = order[winnerIndex];
     const finalThisMatch = snapshotOrder();
+
+    // Rotate người thắng lên đầu tiên
     const nextMatchOrder = rotateToFront(order, winnerIndex);
-    pushLog(`${winner} thắng`);
+
+    pushLog(`🏆 ${winner} thắng! Ván mới bắt đầu`);
     history.push({
       type: "win",
       winner,
@@ -234,27 +379,60 @@
       next: nextMatchOrder.join(" "),
     });
 
-    // Start new match with rotated order
+    // Bắt đầu ván mới
     order = nextMatchOrder;
     currentIndex = 0;
     movesCount = 0;
     roundNumber = 1;
+    matchNumber += 1; // Tăng số trận
+    lastActedPlayer = null; // Reset người đánh gần nhất
+    lastRoundLastPlayer = null;
+    lastRoundErrors = new Set();
     resetRound(order[0]);
+
     const roundNumEl = document.getElementById("round-number");
     if (roundNumEl) roundNumEl.textContent = String(roundNumber);
+
+    const matchNumEl = document.getElementById("match-number");
+    if (matchNumEl) matchNumEl.textContent = String(matchNumber);
+
     renderOrder();
+  };
+
+  const handleSuccess = (shouldRender = true) => {
+    // Người chơi đánh thành công (không lỗi) → advance sang người tiếp theo
+    const current = order[currentIndex];
+
+    actedThisRound.add(current);
+    movesCount += 1;
+    lastActedPlayer = current; // Track người vừa đánh xong
+
+    // Advance to next player
+    currentIndex = (currentIndex + 1) % order.length;
+
+    pushLog(`${current} ✓`);
+    maybeAdvanceRound();
+
+    if (shouldRender) {
+      renderOrder();
+    }
   };
 
   // ---------- Quick-select behaviors ----------
   const fastForwardToPlayer = (playerName) => {
-    // Advance turn pointer as if players before have acted successfully this round
+    // Advance turn pointer, simulating success for players who haven't acted yet
     let safety = 0;
     while (order[currentIndex] !== playerName && safety < 10_000) {
       const current = order[currentIndex];
-      // simulate success turn advancement
-      actedThisRound.add(current);
-      pushLog(`${current} không lỗi`);
-      currentIndex = (currentIndex + 1) % order.length;
+
+      // Nếu người này đã acted (lỗi) rồi → skip
+      if (actedThisRound.has(current)) {
+        currentIndex = (currentIndex + 1) % order.length;
+      } else {
+        // Chưa acted → giả định thành công (không render mỗi lần)
+        handleSuccess(false);
+      }
+
       safety++;
     }
   };
@@ -267,8 +445,17 @@
     handleError();
   };
 
-  const applyPickedWin = (playerName) => {
+  const applyPickedWin = async (playerName) => {
     if (!order.includes(playerName)) return;
+
+    // Confirm trước khi xác nhận thắng
+    const confirmed = await customConfirm(
+      `Xác nhận ${playerName} thắng?`,
+      "🏆 Chiến thắng"
+    );
+
+    if (!confirmed) return;
+
     // Move turn to this player, simulating successes for those before
     fastForwardToPlayer(playerName);
     // Trigger win flow
@@ -278,7 +465,7 @@
   // Tap vs Long-press detection on list items
   function attachTapHandlers(li, playerName) {
     let pressTimer = null;
-    const pressDelay = 5000; // ms (5 seconds to trigger win)
+    const pressDelay = 3000; // ms (3 seconds to trigger win)
 
     const onTap = (e) => {
       e.preventDefault();
@@ -328,10 +515,17 @@
     li.addEventListener("click", onTap);
   }
 
-  backBtn.addEventListener("click", () => {
-    setupSection.classList.remove("hidden");
-    gameSection.classList.add("hidden");
-    renderSetupList();
+  backBtn.addEventListener("click", async () => {
+    const confirmed = await customConfirm(
+      "Bạn có chắc muốn thoát? Dữ liệu game hiện tại sẽ bị mất.",
+      "⚠️ Thoát game"
+    );
+
+    if (confirmed) {
+      setupSection.classList.remove("hidden");
+      gameSection.classList.add("hidden");
+      renderSetupList();
+    }
   });
 
   // ---------- Init ----------
