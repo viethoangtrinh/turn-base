@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Turn Order - Swap On Error</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Turn Order</h1>
+
+      <section id="setup">
+        <h2>Thiết lập thứ tự ban đầu</h2>
+        <p class="hint">Kéo thả để sắp xếp thứ tự 1 → 5, sau đó bấm Bắt đầu.</p>
+        <ul
+          id="player-list"
+          class="draggable-list"
+          aria-label="Danh sách người chơi"
+        >
+          <!-- Filled by JS with default: VH, HA, Tân, DyT, TĐ -->
+        </ul>
+        <div class="actions">
+          <button id="reset-default" class="secondary">
+            Mặc định 1-2-3-4-5
+          </button>
+          <button id="start-game" class="primary">Bắt đầu</button>
+        </div>
+      </section>
+
+      <section id="game" class="hidden">
+        <h2>Đang chơi</h2>
+        <div class="order-wrap">
+          <div class="order-header">Thứ tự hiện tại</div>
+          <div class="round-line">
+            <div id="round-indicator" class="round-pill">
+              Vòng <span id="round-number">1</span>
+            </div>
+          </div>
+          <ol id="current-order" class="order"></ol>
+        </div>
+
+        <p class="hint">
+          - Chạm vào tên: đánh dấu <strong>lỗi</strong>. Nhấn giữ 5s:
+          <strong>thắng</strong>. - Chạm vào badge <strong>Vòng</strong> để xác
+          nhận sang vòng mới khi bạn biết đã hết 1 vòng.
+        </p>
+
+        <div class="actions minor">
+          <button id="action-back" class="secondary">Quay về thiết lập</button>
+        </div>
+
+        <div class="log-wrap">
+          <div class="order-header">Lịch sử</div>
+          <ul id="log" class="log"></ul>
+        </div>
+      </section>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

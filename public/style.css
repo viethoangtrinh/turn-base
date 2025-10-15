@@ -1,0 +1,220 @@
+:root {
+  --bg: #0f172a;
+  --panel: #111827;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --primary: #3b82f6;
+  --warn: #f59e0b;
+  --success: #10b981;
+  --border: #233046;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+    Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  background: radial-gradient(
+    1200px 500px at 50% -10%,
+    #1f2937 0%,
+    var(--bg) 60%
+  );
+  color: var(--text);
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+h1 {
+  font-size: 28px;
+  margin: 0 0 16px;
+}
+
+h2 {
+  font-size: 18px;
+  margin: 24px 0 8px;
+  color: var(--muted);
+}
+.hint {
+  color: var(--muted);
+  margin: 4px 0 12px;
+}
+
+.hidden {
+  display: none;
+}
+
+.draggable-list,
+.order,
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.6);
+  overflow: hidden;
+}
+
+.draggable-list li,
+.order li,
+.log li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.draggable-list li:last-child,
+.order li:last-child,
+.log li:last-child {
+  border-bottom: none;
+}
+
+.drag-handle {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: #25324a;
+  border: 1px solid var(--border);
+  cursor: grab;
+}
+.idx {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #1f2937;
+  border: 1px solid var(--border);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.actions.minor {
+  margin-top: 6px;
+}
+
+.select {
+  min-width: 140px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #172036;
+  color: var(--text);
+}
+
+button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: #172036;
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+button.primary {
+  background: linear-gradient(180deg, #2b62d6, var(--primary));
+}
+button.warn {
+  background: linear-gradient(180deg, #d97706, var(--warn));
+}
+button.success {
+  background: linear-gradient(180deg, #059669, var(--success));
+}
+button.secondary {
+  background: #172036;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.order-wrap,
+.log-wrap {
+  margin-top: 16px;
+}
+.order-header {
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.round-line {
+  display: flex;
+  justify-content: flex-end;
+  margin: 6px 0;
+}
+.round-pill {
+  font-size: 12px;
+  color: #d1fae5;
+  background: #065f46;
+  border: 1px solid #064e3b;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.round-ping {
+  box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.15);
+  transition: box-shadow 400ms ease;
+}
+
+.current {
+  margin-top: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.current-name {
+  font-size: 24px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #1f2937;
+  border: 1px solid var(--border);
+}
+
+.active {
+  outline: 2px solid var(--primary);
+  border-radius: 8px;
+}
+
+.tappable {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.li-pressing {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tag {
+  font-size: 12px;
+  color: #a5b4fc;
+  padding: 2px 8px;
+  border: 1px solid #374151;
+  border-radius: 10px;
+}
