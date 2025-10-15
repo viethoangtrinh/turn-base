@@ -177,12 +177,14 @@
       const isBreaker = name === breakerPlayer;
 
       li.innerHTML = `
-        <span class="idx">${i + 1}</span>
-        <span class="pill tappable pill-theme-${
-          theme ? theme.name : "default"
-        }" data-name="${name}">${name}</span>
-        ${isBreaker ? '<span class="tag breaker-badge">🎱 Phá bi</span>' : ""}
-        ${i === currentIndex ? '<span class="tag">Tới lượt</span>' : ""}
+        <div class="swipe-content">
+          <span class="idx">${i + 1}</span>
+          <span class="pill tappable pill-theme-${
+            theme ? theme.name : "default"
+          }" data-name="${name}">${name}</span>
+          ${isBreaker ? '<span class="tag breaker-badge">🎱 Phá bi</span>' : ""}
+          ${i === currentIndex ? '<span class="tag">Tới lượt</span>' : ""}
+        </div>
       `;
       if (i === currentIndex) li.classList.add("active");
       if (theme) li.classList.add(`theme-${theme.name}`);
@@ -652,77 +654,108 @@
     handleWin();
   };
 
-  // Tap vs Long-press detection on list items
+  // Tap vs Swipe-left detection on list items
   function attachTapHandlers(li, playerName) {
-    let pressTimer = null;
-    let longPressTriggered = false; // Flag để track long-press đã trigger chưa
-    const pressDelay = 1000; // ms (1 second to trigger win)
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let isSwiping = false;
+    let swipeTriggered = false;
 
-    const onTap = (e) => {
-      e.preventDefault();
-      // Nếu long-press vừa trigger, không làm gì
-      if (longPressTriggered) {
-        longPressTriggered = false;
-        return;
-      }
-      applyPickedError(playerName);
+    // Create swipe indicator overlay
+    const swipeIndicator = document.createElement("div");
+    swipeIndicator.className = "swipe-win-indicator";
+    swipeIndicator.innerHTML = '<span class="swipe-win-text">🏆</span>';
+    li.appendChild(swipeIndicator);
+
+    const swipeContent = li.querySelector(".swipe-content");
+
+    const onTouchStart = (e) => {
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      currentX = startX;
+      isSwiping = false;
+      swipeTriggered = false;
     };
 
-    const onPressStart = () => {
-      li.classList.add("li-pressing");
-      longPressTriggered = false; // Reset flag
-      pressTimer = setTimeout(() => {
-        longPressTriggered = true; // Đánh dấu long-press đã trigger
+    const onTouchMove = (e) => {
+      if (swipeTriggered) return;
+
+      const touch = e.touches[0];
+      currentX = touch.clientX;
+      const currentY = touch.clientY;
+
+      const diffX = currentX - startX;
+      const diffY = Math.abs(currentY - startY);
+
+      // Chỉ detect horizontal swipe (không phải vertical scroll)
+      if (Math.abs(diffX) > 10 && diffY < 30) {
+        // Chỉ preventDefault khi chắc chắn là horizontal swipe
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+        isSwiping = true;
+
+        // Visual feedback khi swipe left
+        if (diffX < 0) {
+          const swipeAmount = Math.abs(diffX);
+          const indicatorOpacity = Math.min(swipeAmount / 80, 1);
+
+          swipeContent.style.transform = `translateX(${diffX}px)`;
+          swipeContent.style.transition = "none";
+
+          // Show indicator at fixed position
+          swipeIndicator.style.opacity = indicatorOpacity;
+        }
+      }
+    };
+
+    const onTouchEnd = (e) => {
+      if (swipeTriggered) return;
+
+      const diffX = currentX - startX;
+
+      // Reset visual
+      swipeContent.style.transform = "";
+      swipeContent.style.transition = "";
+      swipeIndicator.style.opacity = "";
+
+      // Swipe left đủ xa (> 80px) = Win
+      if (isSwiping && diffX < -80) {
+        swipeTriggered = true;
         applyPickedWin(playerName);
-        cleanup();
-      }, pressDelay);
-    };
-
-    const onPressEnd = (e) => {
-      e.preventDefault();
-
-      // Nếu long-press đã trigger, không làm gì thêm
-      if (longPressTriggered) {
-        cleanup();
         return;
       }
 
-      // Nếu vẫn còn timer (chưa đủ 3s), cancel và trigger error
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
+      // Tap thông thường = Error
+      if (!isSwiping) {
         applyPickedError(playerName);
       }
-      cleanup();
+
+      isSwiping = false;
     };
 
-    const onCancel = () => {
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
+    const onTouchCancel = () => {
+      swipeContent.style.transform = "";
+      swipeContent.style.transition = "";
+      swipeIndicator.style.opacity = "";
+      isSwiping = false;
+      swipeTriggered = false;
+    };
+
+    // Touch events
+    li.addEventListener("touchstart", onTouchStart, { passive: true });
+    li.addEventListener("touchmove", onTouchMove, { passive: false });
+    li.addEventListener("touchend", onTouchEnd, { passive: false });
+    li.addEventListener("touchcancel", onTouchCancel, { passive: true });
+
+    // Click for desktop (only error, no win on desktop)
+    li.addEventListener("click", (e) => {
+      if (!isSwiping && !swipeTriggered) {
+        applyPickedError(playerName);
       }
-      longPressTriggered = false;
-      cleanup();
-    };
-
-    const cleanup = () => {
-      li.classList.remove("li-pressing");
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
-      }
-    };
-
-    // Touch events for mobile
-    li.addEventListener("touchstart", onPressStart, { passive: true });
-    li.addEventListener("touchend", onPressEnd, { passive: false });
-    li.addEventListener("touchcancel", onCancel, { passive: true });
-
-    // Mouse events as fallback
-    li.addEventListener("mousedown", onPressStart);
-    li.addEventListener("mouseleave", onCancel);
-    li.addEventListener("mouseup", onPressEnd);
-    li.addEventListener("click", onTap);
+    });
   }
 
   backBtn.addEventListener("click", async () => {

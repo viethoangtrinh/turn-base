@@ -71,7 +71,7 @@ h3.section-subtitle {
 }
 .hint {
   color: var(--muted);
-  margin: 4px 0 12px;
+  margin: 12px 0 12px;
 }
 
 .hidden {
@@ -113,7 +113,6 @@ h3.section-subtitle {
   margin-bottom: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   -webkit-tap-highlight-color: transparent;
-  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   position: relative;
@@ -121,10 +120,79 @@ h3.section-subtitle {
   overflow: visible;
 }
 
+.draggable-list li {
+  touch-action: none;
+}
+
+.order li {
+  touch-action: pan-y;
+  overflow: hidden;
+  padding: 0;
+  gap: 0;
+  /* Ngăn chặn scroll khi đang swipe */
+  overscroll-behavior-x: none;
+  border-radius: 8px;
+}
+
+.swipe-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg);
+  position: relative;
+  z-index: 2;
+  transition: transform 0.2s ease;
+  width: 100%;
+  border-radius: inherit;
+}
+
 .draggable-list li:last-child,
 .order li:last-child,
 .log li:last-child {
   border-bottom: none;
+}
+
+.order li:last-child {
+  margin-bottom: 0;
+}
+
+/* Swipe Win Indicator - Background layer */
+.swipe-win-indicator {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 120px;
+  background: linear-gradient(
+    90deg,
+    rgba(16, 185, 129, 0.3),
+    rgba(16, 185, 129, 0.8)
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+  transition: opacity 0.15s ease;
+}
+
+.swipe-win-text {
+  font-size: 32px;
+  filter: drop-shadow(0 3px 8px rgba(16, 185, 129, 0.9));
+  animation: pulse-win 0.6s ease-in-out infinite;
+}
+
+@keyframes pulse-win {
+  0%,
+  100% {
+    transform: scale(1) rotate(-10deg);
+  }
+  50% {
+    transform: scale(1.25) rotate(10deg);
+  }
 }
 
 .drag-handle {
@@ -616,6 +684,8 @@ button:disabled {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: theme-border 2.5s linear infinite; /* Faster */
+  z-index: 3;
+  pointer-events: none;
 }
 .theme-tag.theme-lightning {
   background: linear-gradient(135deg, #fbbf24, #f59e0b);
@@ -676,6 +746,8 @@ button:disabled {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: theme-border 2.5s linear infinite; /* Faster */
+  z-index: 3;
+  pointer-events: none;
 }
 .theme-tag.theme-fire {
   background: linear-gradient(135deg, #ef4444, #f97316);
@@ -736,6 +808,8 @@ button:disabled {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: theme-border 2.5s linear infinite; /* Faster */
+  z-index: 3;
+  pointer-events: none;
 }
 .theme-tag.theme-ice {
   background: linear-gradient(135deg, #06b6d4, #3b82f6);
@@ -796,6 +870,8 @@ button:disabled {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: theme-border 2.5s linear infinite; /* Faster */
+  z-index: 3;
+  pointer-events: none;
 }
 .theme-tag.theme-nature {
   background: linear-gradient(135deg, #22c55e, #10b981);
@@ -856,6 +932,8 @@ button:disabled {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: theme-border 2.5s linear infinite; /* Faster */
+  z-index: 3;
+  pointer-events: none;
 }
 .theme-tag.theme-shadow {
   background: linear-gradient(135deg, #8b5cf6, #581c87);
@@ -901,10 +979,6 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.li-pressing {
-  background: rgba(255, 255, 255, 0.04);
 }
 
 .tag {
