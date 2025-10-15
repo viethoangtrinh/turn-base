@@ -3,24 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Turn Order - Swap On Error</title>
+    <title>Duy Brothers - Billiards</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <div class="container">
-      <h1>Turn Order</h1>
+      <div class="logo-container">
+        <img src="/assets/duy-brothers.png" alt="Duy Brothers" class="logo" />
+      </div>
 
       <section id="setup">
-        <h2>Thiết lập thứ tự ban đầu</h2>
-        <p class="hint">Kéo thả để sắp xếp thứ tự 1 → 5, sau đó bấm Bắt đầu.</p>
+        <h2>Lại nghiện rồi đấy =))</h2>
+        <p class="hint">Chọn 3-5 người chơi. Kéo thả để sắp xếp thứ tự.</p>
         <ul
           id="player-list"
           class="draggable-list"
           aria-label="Danh sách người chơi"
         >
-          <!-- Filled by JS with default: VH, HA, Tân, DyT, TĐ -->
+          <!-- Filled by JS -->
         </ul>
+
+        <h3 class="section-subtitle">Người chơi khả dụng</h3>
+        <ul id="available-players" class="available-list">
+          <!-- Filled by JS -->
+        </ul>
+
         <div class="actions">
+          <button id="reset-default" class="secondary">Đặt lại mặc định</button>
           <button id="start-game" class="primary">Bắt đầu</button>
         </div>
       </section>
@@ -31,8 +40,8 @@
           <button id="action-back" class="btn-exit">Thoát</button>
         </div>
         <div class="order-wrap">
-          <div class="order-header">Thứ tự hiện tại</div>
-          <div class="round-line">
+          <div class="order-header-row">
+            <div class="order-header">Thứ tự hiện tại</div>
             <div id="round-indicator" class="round-pill">
               Vòng <span id="round-number">1</span>
             </div>
@@ -42,12 +51,15 @@
 
         <p class="hint">
           - Chạm vào tên: đánh dấu <strong>lỗi</strong><br />
-          - Nhấn giữ 3s: <strong>thắng</strong>
+          - Nhấn giữ: <strong>thắng</strong>
         </p>
 
         <div class="log-wrap">
-          <div class="order-header">Lịch sử</div>
-          <ul id="log" class="log"></ul>
+          <button id="toggle-log" class="log-toggle">
+            <span class="log-toggle-text">Lịch sử</span>
+            <span class="log-toggle-icon">▼</span>
+          </button>
+          <ul id="log" class="log hidden"></ul>
         </div>
       </section>
     </div>
