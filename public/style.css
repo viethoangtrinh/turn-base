@@ -124,6 +124,13 @@ h3.section-subtitle {
   touch-action: none;
 }
 
+.draggable-list li .controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .order li {
   touch-action: pan-y;
   overflow: hidden;
@@ -1138,9 +1145,9 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: rgba(17, 24, 39, 0.6);
-  overflow: hidden;
   max-height: 200px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .available-player {

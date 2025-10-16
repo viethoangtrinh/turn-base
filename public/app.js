@@ -101,8 +101,10 @@
       li.innerHTML = `
         <span class="idx">${i + 1}</span>
         <span class="pill">${name}</span>
-        <span class="drag-handle" title="Kéo để đổi vị trí"></span>
-        <button class="btn-remove" data-index="${i}" title="Xóa"></button>
+        <div class="controls">
+          <span class="drag-handle" title="Kéo để đổi vị trí"></span>
+          <button class="btn-remove" data-index="${i}" title="Xóa"></button>
+        </div>
       `;
       playerList.appendChild(li);
     });
@@ -198,7 +200,7 @@
 
   const pushLog = (text) => {
     const li = document.createElement("li");
-    li.textContent = text;
+    li.textContent = `[Vòng ${roundNumber}] ${text}`;
     logEl.prepend(li);
     // Keep only last 5 entries
     while (logEl.children.length > 5) {
@@ -216,7 +218,8 @@
 
   const resetRound = (starterName) => {
     actedThisRound = new Set();
-    erroredThisRound = new Set();
+    // KHÔNG reset erroredThisRound - người lỗi vẫn giữ trạng thái lỗi
+    // erroredThisRound = new Set();
     roundStarterName = starterName;
   };
 
@@ -437,6 +440,7 @@
     lastActedPlayer = null; // Reset người đánh gần nhất
     lastRoundLastPlayer = null;
     lastRoundErrors = new Set();
+    erroredThisRound = new Set(); // Reset trạng thái lỗi
     resetRound(order[0]);
     history.push({ type: "start", order: snapshotOrder() });
     logEl.innerHTML = "";
@@ -474,35 +478,27 @@
       return;
     }
 
-    // Tìm người đánh gần nhất trước người hiện tại
-    // Nếu chưa có ai đánh (đầu vòng mới), lấy người ở vị trí trước trong array
+    // Logic: chỉ kiểm tra người NGAY TRƯỚC trong danh sách
     const prevIndex = (currentIndex - 1 + n) % n;
-    const candidatePrev = lastActedPlayer || order[prevIndex];
+    const prevPlayer = order[prevIndex];
 
-    // Luật: Người vừa đánh trước được hưởng lợi NẾU:
-    // 1. Chưa lỗi trong vòng này
-    // 2. HOẶC nếu là người cuối vòng trước, phải chưa lỗi ở vòng trước
-    const erroredInCurrentRound = erroredThisRound.has(candidatePrev);
-    const isLastPlayerOfPrevRound = candidatePrev === lastRoundLastPlayer;
-    const erroredInPrevRound = lastRoundErrors.has(candidatePrev);
+    // Kiểm tra: người trước có được hưởng lợi không?
+    // Điều kiện: chưa lỗi (erroredThisRound giờ track lỗi xuyên vòng, chỉ xóa khi đánh thành công)
+    const prevErrored = erroredThisRound.has(prevPlayer);
 
-    const shouldSwap =
-      !erroredInCurrentRound &&
-      !(isLastPlayerOfPrevRound && erroredInPrevRound);
-
-    if (shouldSwap) {
-      // Previous được hưởng lợi → swap và được đánh lại
-      const prevIdx = order.indexOf(candidatePrev);
-      const tmp = order[prevIdx];
-      order[prevIdx] = order[currentIndex];
+    if (!prevErrored) {
+      // Swap: người lỗi với người trước
+      // TRƯỚC swap: currentIndex=3 (Tân), prevIndex=2 (Duy Thuần)
+      const tmp = order[prevIndex];
+      order[prevIndex] = order[currentIndex];
       order[currentIndex] = tmp;
+      // SAU swap: currentIndex=3 (Duy Thuần), prevIndex=2 (Tân)
 
-      // Update currentIndex to point to the advantaged player
-      currentIndex = prevIdx;
+      // currentIndex không đổi, vẫn chỉ vào người được hưởng lợi (Duy Thuần ở vị trí 3)
 
-      pushLog(`${current} lỗi → ${candidatePrev} được đánh lại`);
+      pushLog(`${current} lỗi → ${prevPlayer} được đánh lại`);
     } else {
-      // Previous đã lỗi → không được hưởng lợi, advance
+      // Người trước đã lỗi → không swap, advance sang người tiếp theo
       currentIndex = (currentIndex + 1) % n;
       pushLog(`${current} lỗi`);
     }
@@ -580,6 +576,7 @@
     lastActedPlayer = null; // Reset người đánh gần nhất
     lastRoundLastPlayer = null;
     lastRoundErrors = new Set();
+    erroredThisRound = new Set(); // Reset trạng thái lỗi
     resetRound(order[0]);
 
     const roundNumEl = document.getElementById("round-number");
@@ -599,6 +596,9 @@
     movesCount += 1;
     lastActedPlayer = current; // Track người vừa đánh xong
 
+    // Xóa trạng thái lỗi của người này (nếu có)
+    erroredThisRound.delete(current);
+
     // Advance to next player
     currentIndex = (currentIndex + 1) % order.length;
 
@@ -612,7 +612,7 @@
 
   // ---------- Quick-select behaviors ----------
   const fastForwardToPlayer = (playerName) => {
-    // Advance turn pointer, simulating success for players who haven't acted yet
+    // Chỉ advance đến người được chọn, không advance quá
     let safety = 0;
     while (order[currentIndex] !== playerName && safety < 10_000) {
       const current = order[currentIndex];
@@ -621,20 +621,33 @@
       if (actedThisRound.has(current)) {
         currentIndex = (currentIndex + 1) % order.length;
       } else {
-        // Chưa acted → giả định thành công (không render mỗi lần)
-        handleSuccess(false);
+        // Chưa acted → giả định thành công (chỉ update state, không render)
+        actedThisRound.add(current);
+        movesCount += 1; // Tăng movesCount để không bị nhầm với cú phá bi
+        currentIndex = (currentIndex + 1) % order.length;
+        pushLog(`${current} không lỗi`);
       }
 
       safety++;
     }
   };
 
+  let isProcessing = false; // Flag để ngăn multiple calls
+
   const applyPickedError = (playerName) => {
     if (!order.includes(playerName)) return;
+    if (isProcessing) return; // Ngăn gọi nhiều lần
+
+    isProcessing = true;
     // Fast-forward so that it's this player's turn to error
     fastForwardToPlayer(playerName);
     // Now trigger error with existing rules
     handleError();
+
+    // Delay reset để đảm bảo render xong
+    setTimeout(() => {
+      isProcessing = false;
+    }, 300);
   };
 
   const applyPickedWin = async (playerName) => {
@@ -765,6 +778,11 @@
     );
 
     if (confirmed) {
+      // Reset toàn bộ state
+      erroredThisRound = new Set();
+      actedThisRound = new Set();
+      roundNumber = 1;
+      movesCount = 0;
       setupSection.classList.remove("hidden");
       gameSection.classList.add("hidden");
       renderSetupList();
