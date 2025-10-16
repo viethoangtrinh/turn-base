@@ -1,16 +1,40 @@
-Turn Order (Swap On Error)
+# Turn Order (Billiards)
 
-Chạy:
+App quản lý lượt chơi billiards với logic swap-on-error và real-time sync.
 
-```
+## Setup
+
+1. **Cài đặt dependencies:**
+
+```bash
 npm install
-npm start
-# http://localhost:3000
 ```
 
-Luật:
+2. **Cấu hình môi trường:**
 
-- Mặc định 5 người: VH, HA, Tân, DyT, TĐ. Có thể kéo-thả để sắp xếp.
-- Hoàn tất lượt: sang người tiếp theo.
-- Lỗi: đổi chỗ với người ngay trước; lượt kế tiếp là người sau lượt lỗi.
-- Thắng: xoay danh sách để người thắng lên đầu và bắt đầu trận mới.
+```bash
+cp .env.example .env
+# Sửa .env với MongoDB connection string của bạn
+```
+
+3. **Chạy server:**
+
+```bash
+npm start
+# Mở http://localhost:3000
+```
+
+## Luật chơi
+
+- Chạm vào tên: đánh dấu **lỗi**
+- Kéo sang trái ←: **thắng trận** 🏆
+- Người lỗi → swap với người trước (nếu người trước chưa lỗi)
+- Trạng thái lỗi chỉ xóa khi người đó đánh thành công
+- Người thắng lên đầu ở trận mới
+
+## Tech Stack
+
+- **Backend:** Node.js + Express
+- **Database:** MongoDB + Mongoose
+- **Frontend:** Vanilla JS + CSS
+- **Real-time:** (Coming soon: Socket.IO)

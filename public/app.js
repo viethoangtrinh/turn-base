@@ -1,26 +1,66 @@
 (() => {
-  // All available players
-  const allPlayers = [
-    "Việt Hoàng",
-    "Hùng Anh",
-    "Tân",
-    "Duy Thuần",
-    "Tấn Đạt",
-    "Tuấn",
-    "Bảo",
-    "Duy Mai",
-    "Đạt Đồng",
-    "Ánh Ngọc",
-  ];
+  // Socket.IO connection
+  const socket = io();
+  let currentUser = { username: "Guest", role: "guest" };
+  let isConnected = false;
 
-  // Default starting players
-  const defaultPlayers = [
-    "Việt Hoàng",
-    "Hùng Anh",
-    "Tân",
-    "Duy Thuần",
-    "Tấn Đạt",
-  ];
+  // Socket event listeners
+  socket.on("connect", () => {
+    console.log("✅ Connected to server");
+    isConnected = true;
+  });
+
+  socket.on("disconnect", () => {
+    console.log("❌ Disconnected from server");
+    isConnected = false;
+  });
+
+  socket.on("auth:status", (user) => {
+    currentUser = user;
+    console.log(`👤 Logged in as: ${user.username} (${user.role})`);
+  });
+
+  socket.on("error", (data) => {
+    console.error("Socket error:", data.message);
+    alert(`Lỗi: ${data.message}`);
+  });
+
+  // Listen for real-time game updates
+  socket.on("game:updated", (gameState) => {
+    console.log("📡 Game updated:", gameState);
+
+    // Update local state from server
+    if (gameState.order && Array.isArray(gameState.order)) {
+      order = [...gameState.order];
+      currentIndex = gameState.currentIndex || 0;
+      roundNumber = gameState.roundNumber || 1;
+      matchNumber = gameState.matchNumber || 1;
+      movesCount = gameState.movesCount || 0;
+      actedThisRound = new Set(gameState.actedThisRound || []);
+      erroredThisRound = new Set(gameState.erroredThisRound || []);
+      breakerPlayer = gameState.breakerPlayer || null;
+
+      // Update UI if in game
+      if (!gameSection.classList.contains("hidden")) {
+        renderOrder();
+
+        const roundNumEl = document.getElementById("round-number");
+        if (roundNumEl) roundNumEl.textContent = String(roundNumber);
+
+        const matchNumEl = document.getElementById("match-number");
+        if (matchNumEl) matchNumEl.textContent = String(matchNumber);
+      }
+    }
+  });
+
+  socket.on("game:win", (data) => {
+    console.log("🏆 Winner:", data.winner);
+    pushLog(`🏆 ${data.winner} thắng! Ván mới bắt đầu`);
+  });
+
+  // Players will be loaded from API
+  let allPlayers = [];
+  let defaultPlayers = [];
 
   // DOM
   const setupSection = document.getElementById("setup");
@@ -412,6 +452,15 @@
   });
 
   startBtn.addEventListener("click", async () => {
+    // Check if user is admin
+    if (currentUser.role !== "admin") {
+      await customConfirm(
+        "Chỉ admin mới có thể bắt đầu game. Vui lòng đăng nhập.",
+        "⚠️ Không có quyền"
+      );
+      return;
+    }
+
     // Validate 3-5 players
     if (setupOrder.length < 3) {
       await customConfirm(
@@ -429,18 +478,21 @@
       return;
     }
 
-    // Initialize a match with the chosen order
+    // Emit socket event to start game
+    socket.emit("game:start", { order: setupOrder });
+
+    // Initialize local state
     order = [...setupOrder];
     currentIndex = 0;
     movesCount = 0;
     roundNumber = 1;
-    matchNumber = 1; // Bắt đầu trận đầu tiên
-    breakerPlayer = order[0]; // Người đầu tiên là người phá bi
-    playerThemes = shuffleThemes(order); // Random themes cho người chơi
-    lastActedPlayer = null; // Reset người đánh gần nhất
+    matchNumber = 1;
+    breakerPlayer = order[0];
+    playerThemes = shuffleThemes(order);
+    lastActedPlayer = null;
     lastRoundLastPlayer = null;
     lastRoundErrors = new Set();
-    erroredThisRound = new Set(); // Reset trạng thái lỗi
+    erroredThisRound = new Set();
     resetRound(order[0]);
     history.push({ type: "start", order: snapshotOrder() });
     logEl.innerHTML = "";
@@ -637,11 +689,20 @@
   const applyPickedError = (playerName) => {
     if (!order.includes(playerName)) return;
     if (isProcessing) return; // Ngăn gọi nhiều lần
+    if (currentUser.role !== "admin") {
+      alert("Chỉ admin mới có thể thao tác");
+      return;
+    }
 
     isProcessing = true;
+
     // Fast-forward so that it's this player's turn to error
     fastForwardToPlayer(playerName);
-    // Now trigger error with existing rules
+
+    // Emit socket event for error
+    socket.emit("game:error", { playerName });
+
+    // Now trigger error with existing rules (local update)
     handleError();
 
     // Delay reset để đảm bảo render xong
@@ -652,6 +713,10 @@
 
   const applyPickedWin = async (playerName) => {
     if (!order.includes(playerName)) return;
+    if (currentUser.role !== "admin") {
+      alert("Chỉ admin mới có thể thao tác");
+      return;
+    }
 
     // Confirm trước khi xác nhận thắng
     const confirmed = await customConfirm(
@@ -663,7 +728,11 @@
 
     // Move turn to this player, simulating successes for those before
     fastForwardToPlayer(playerName);
-    // Trigger win flow
+
+    // Emit socket event for win
+    socket.emit("game:win", { playerName });
+
+    // Trigger win flow (local update)
     handleWin();
   };
 
@@ -778,6 +847,11 @@
     );
 
     if (confirmed) {
+      // Emit socket event to reset game (if admin)
+      if (currentUser.role === "admin") {
+        socket.emit("game:reset");
+      }
+
       // Reset toàn bộ state
       erroredThisRound = new Set();
       actedThisRound = new Set();
@@ -790,7 +864,29 @@
     }
   });
 
+  // ---------- Fetch Players from API ----------
+  const fetchPlayers = async () => {
+    try {
+      const response = await fetch("/api/players");
+      const players = await response.json();
+
+      // Extract player names
+      allPlayers = players.map((p) => p.name);
+
+      // Default: first 5 players
+      defaultPlayers = allPlayers.slice(0, 5);
+
+      // Initialize UI
+      renderSetupList();
+      renderAvailablePlayers();
+    } catch (error) {
+      console.error("Failed to fetch players:", error);
+      // Fallback to empty
+      allPlayers = [];
+      defaultPlayers = [];
+    }
+  };
+
   // ---------- Init ----------
-  renderSetupList();
-  renderAvailablePlayers();
+  fetchPlayers();
 })();
