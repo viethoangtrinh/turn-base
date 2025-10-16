@@ -63,11 +63,17 @@
   let defaultPlayers = [];
 
   // DOM
+  const emptyState = document.getElementById("empty-state");
   const setupSection = document.getElementById("setup");
   const gameSection = document.getElementById("game");
   const playerList = document.getElementById("player-list");
+  const loginModal = document.getElementById("login-modal");
+  const loginForm = document.getElementById("login-form");
+  const adminLoginBtn = document.getElementById("admin-login-btn");
+  const cancelLoginBtn = document.getElementById("cancel-login");
+  const loginError = document.getElementById("login-error");
+  const logoutBtn = document.getElementById("logout-btn");
   const startBtn = document.getElementById("start-game");
-  const resetDefaultBtn = document.getElementById("reset-default");
 
   // Modal elements
   const confirmModal = document.getElementById("confirm-modal");
@@ -445,22 +451,8 @@
   playerList.addEventListener("touchcancel", finishTouch, { passive: false });
 
   // ---------- Actions ----------
-  resetDefaultBtn.addEventListener("click", () => {
-    setupOrder = [...defaultPlayers];
-    renderSetupList();
-    renderAvailablePlayers();
-  });
 
   startBtn.addEventListener("click", async () => {
-    // Check if user is admin
-    if (currentUser.role !== "admin") {
-      await customConfirm(
-        "Chỉ admin mới có thể bắt đầu game. Vui lòng đăng nhập.",
-        "⚠️ Không có quyền"
-      );
-      return;
-    }
-
     // Validate 3-5 players
     if (setupOrder.length < 3) {
       await customConfirm(
@@ -498,6 +490,11 @@
     logEl.innerHTML = "";
     setupSection.classList.add("hidden");
     gameSection.classList.remove("hidden");
+
+    // Admin đang chơi game - show controls
+    backBtn.classList.remove("hidden");
+    document.querySelector(".hint").classList.remove("hidden");
+    adminLoginBtn.classList.add("hidden");
 
     const roundNumEl = document.getElementById("round-number");
     if (roundNumEl) roundNumEl.textContent = String(roundNumber);
@@ -857,10 +854,15 @@
       actedThisRound = new Set();
       roundNumber = 1;
       movesCount = 0;
-      setupSection.classList.remove("hidden");
-      gameSection.classList.add("hidden");
-      renderSetupList();
-      renderAvailablePlayers();
+
+      // Admin về setup, guest về empty state
+      if (currentUser.role === "admin") {
+        showSetupSection(true);
+        renderSetupList();
+        renderAvailablePlayers();
+      } else {
+        checkGameState();
+      }
     }
   });
 
@@ -887,6 +889,178 @@
     }
   };
 
+  // ---------- Auth Functions ----------
+  const checkAuth = async () => {
+    try {
+      const response = await fetch("/api/auth/me");
+      if (response.ok) {
+        const user = await response.json();
+        currentUser = user;
+        showSetupSection(true); // Admin logged in
+        return true;
+      }
+    } catch (error) {
+      console.log("Not authenticated:", error);
+    }
+
+    // Not authenticated - show game or empty state
+    checkGameState();
+    return false;
+  };
+
+  const checkGameState = async () => {
+    try {
+      const response = await fetch("/api/game");
+      const gameState = await response.json();
+
+      if (gameState.isActive && gameState.order && gameState.order.length > 0) {
+        // Có game đang chơi → Show game section
+        order = gameState.order;
+        currentIndex = gameState.currentIndex || 0;
+        roundNumber = gameState.roundNumber || 1;
+        matchNumber = gameState.matchNumber || 1;
+        movesCount = gameState.movesCount || 0;
+        actedThisRound = new Set(gameState.actedThisRound || []);
+        erroredThisRound = new Set(gameState.erroredThisRound || []);
+        breakerPlayer = gameState.breakerPlayer || null;
+
+        emptyState.classList.add("hidden");
+        setupSection.classList.add("hidden");
+        gameSection.classList.remove("hidden");
+        adminLoginBtn.classList.remove("hidden"); // Guest vẫn thấy button admin
+
+        // Guest không được thao tác - ẩn các controls
+        if (currentUser.role !== "admin") {
+          backBtn.classList.add("hidden");
+          document.querySelector(".hint").classList.add("hidden");
+        } else {
+          backBtn.classList.remove("hidden");
+          document.querySelector(".hint").classList.remove("hidden");
+        }
+
+        renderOrder();
+
+        const roundNumEl = document.getElementById("round-number");
+        if (roundNumEl) roundNumEl.textContent = String(roundNumber);
+
+        const matchNumEl = document.getElementById("match-number");
+        if (matchNumEl) matchNumEl.textContent = String(matchNumber);
+      } else {
+        // Không có game → Show empty state
+        showEmptyState();
+      }
+    } catch (error) {
+      console.error("Failed to check game state:", error);
+      showEmptyState();
+    }
+  };
+
+  const showEmptyState = () => {
+    console.log("🔧 showEmptyState", { currentUser });
+    emptyState.classList.remove("hidden");
+    setupSection.classList.add("hidden");
+    gameSection.classList.add("hidden");
+
+    // Show appropriate button based on user role
+    if (currentUser.role === "admin") {
+      console.log("👤 Admin → Show logout, hide login");
+      adminLoginBtn.classList.add("hidden");
+      logoutBtn.classList.remove("hidden");
+    } else {
+      console.log("👤 Guest → Show login, hide logout");
+      adminLoginBtn.classList.remove("hidden");
+      logoutBtn.classList.add("hidden");
+    }
+  };
+
+  const showSetupSection = (isAdmin) => {
+    emptyState.classList.add("hidden");
+    setupSection.classList.remove("hidden");
+    gameSection.classList.add("hidden");
+
+    if (isAdmin) {
+      // Admin: Show logout, hide login
+      logoutBtn.classList.remove("hidden");
+      adminLoginBtn.classList.add("hidden");
+    } else {
+      // Guest: Hide logout, show login
+      logoutBtn.classList.add("hidden");
+      adminLoginBtn.classList.remove("hidden");
+    }
+  };
+
+  // Open login modal
+  adminLoginBtn.addEventListener("click", () => {
+    loginModal.classList.remove("hidden");
+    document.getElementById("username").focus();
+  });
+
+  // Cancel login
+  cancelLoginBtn.addEventListener("click", (e) => {
+    console.log("🔴 Cancel button clicked!");
+    e.preventDefault();
+    e.stopPropagation();
+    loginModal.classList.add("hidden");
+    loginError.classList.add("hidden");
+    loginForm.reset();
+  });
+
+  // Close modal on backdrop click (not on modal content)
+  loginModal.addEventListener("click", (e) => {
+    // Only close if clicking directly on the backdrop (not on child elements)
+    if (e.target.id === "login-modal") {
+      cancelLoginBtn.click();
+    }
+  });
+
+  // Login form submit
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    loginError.classList.add("hidden");
+
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        currentUser = data.user;
+        loginModal.classList.add("hidden");
+        loginForm.reset();
+        showSetupSection(true);
+        console.log("✅ Logged in as:", data.user.username);
+      } else {
+        loginError.textContent = data.error || "Đăng nhập thất bại";
+        loginError.classList.remove("hidden");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      loginError.textContent = "Lỗi kết nối server";
+      loginError.classList.remove("hidden");
+    }
+  });
+
+  // Logout
+  logoutBtn.addEventListener("click", async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+
+    currentUser = { username: "Guest", role: "guest" };
+    checkGameState(); // Go back to game or empty state
+    console.log("👋 Logged out");
+  });
+
   // ---------- Init ----------
   fetchPlayers();
+  checkAuth(); // Check if already logged in
 })();

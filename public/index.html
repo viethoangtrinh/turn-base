@@ -11,9 +11,64 @@
   </head>
   <body>
     <div class="container">
+      <!-- Admin Login Button (floating for guests) -->
+      <button id="admin-login-btn" class="admin-login-btn">🔑 Admin</button>
+
+      <!-- Logout Button (floating for admin) -->
+      <button id="logout-btn" class="logout-btn hidden">Đăng xuất</button>
+
+      <!-- Login Modal -->
+      <div id="login-modal" class="modal-backdrop hidden">
+        <div class="login-modal-content">
+          <h2>🔑 Đăng nhập Admin</h2>
+
+          <form id="login-form" class="login-form">
+            <div class="form-group">
+              <label for="username">Tài khoản</label>
+              <input
+                type="text"
+                id="username"
+                name="username"
+                autocomplete="username"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="password">Mật khẩu</label>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                autocomplete="current-password"
+                required
+              />
+            </div>
+
+            <div id="login-error" class="login-error hidden"></div>
+
+            <div class="login-actions">
+              <button type="submit" class="btn-primary">Đăng nhập</button>
+              <button type="button" id="cancel-login" class="btn-secondary">
+                Hủy
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <div class="logo-container">
         <img src="/assets/duy-brothers.png" alt="Duy Brothers" class="logo" />
       </div>
+
+      <!-- Empty State (when no game) -->
+      <section id="empty-state" class="hidden">
+        <div class="empty-state-content">
+          <div class="empty-icon">🎱</div>
+          <h2>Chưa có trận đấu nào</h2>
+          <p>Admin cần đăng nhập để bắt đầu trận đấu mới</p>
+        </div>
+      </section>
 
       <section id="setup">
         <h2>Lại nghiện rồi đấy =))</h2>
@@ -32,7 +87,6 @@
         </ul>
 
         <div class="actions">
-          <button id="reset-default" class="secondary">Đặt lại mặc định</button>
           <button id="start-game" class="primary">Bắt đầu</button>
         </div>
       </section>
