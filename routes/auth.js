@@ -32,7 +32,6 @@ router.post("/login", async (req, res) => {
         oldSessionId: user.activeSessionId,
         reason: "New admin login from another device",
       });
-      console.log(`🚨 Kicked old admin session: ${user.activeSessionId}`);
     }
 
     // Create new session
@@ -52,8 +51,6 @@ router.post("/login", async (req, res) => {
     user.activeSessionId = newSessionId;
     user.lastLoginAt = new Date();
     await user.save();
-
-    console.log(`✅ Admin login: ${user.username} (Session: ${newSessionId})`);
 
     res.json({
       message: "Login successful",
@@ -80,7 +77,6 @@ router.post("/logout", async (req, res) => {
       if (user && user.activeSessionId === sessionId) {
         user.activeSessionId = null;
         await user.save();
-        console.log(`👋 Admin logout: ${user.username}`);
       }
     }
 
@@ -93,7 +89,6 @@ router.post("/logout", async (req, res) => {
         if (io) {
           io.emit("game:updated", await GameState.getSingleton());
         }
-        console.log(`🛑 Game ended because admin logged out`);
       }
     }
 

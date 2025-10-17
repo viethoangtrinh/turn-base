@@ -48,7 +48,6 @@ router.post("/undo", async (req, res) => {
   try {
     const state = await GameState.getSingleton();
 
-    // Get latest history entry for current match
     const lastEntry = await GameHistory.findOne({
       matchNumber: state.matchNumber,
     }).sort({ createdAt: -1 });
@@ -57,7 +56,6 @@ router.post("/undo", async (req, res) => {
       return res.status(400).json({ error: "No history to undo" });
     }
 
-    // Restore state before
     const stateBefore = lastEntry.stateBefore;
     Object.keys(stateBefore).forEach((key) => {
       state[key] = stateBefore[key];
@@ -65,7 +63,6 @@ router.post("/undo", async (req, res) => {
 
     await state.save();
 
-    // Delete this history entry (hoặc mark as undone)
     await GameHistory.deleteOne({ _id: lastEntry._id });
 
     res.json({ message: "Undo successful", state });

@@ -1,17 +1,14 @@
 (() => {
-  // Socket.IO connection
   const socket = io();
   let currentUser = { username: "Guest", role: "guest" };
   let isConnected = false;
 
-  // Toast & Connection Banner & Loading
   const toastContainer = document.getElementById("toast-container");
   const connectionBanner = document.getElementById("connection-banner");
   const connectionMessage = document.getElementById("connection-message");
   const loadingOverlay = document.getElementById("loading-overlay");
   const loadingText = document.getElementById("loading-text");
 
-  // Toast Notification System
   const showToast = (message, type = "info", duration = 3000) => {
     const toast = document.createElement("div");
     toast.className = `toast ${type}`;
@@ -24,7 +21,6 @@
     }, duration);
   };
 
-  // Connection Banner
   const showConnectionBanner = (message, reconnecting = false) => {
     connectionMessage.textContent = message;
     connectionBanner.classList.remove("hidden");
@@ -39,7 +35,6 @@
     connectionBanner.classList.add("hidden");
   };
 
-  // Loading Overlay
   const showLoading = (message = "Đang xử lý...") => {
     loadingText.textContent = message;
     loadingOverlay.classList.remove("hidden");
@@ -51,20 +46,16 @@
     document.body.classList.remove("loading");
   };
 
-  // Socket event listeners
   socket.on("connect", () => {
-    console.log("✅ Connected to server");
     isConnected = true;
     hideConnectionBanner();
 
-    // Only show reconnection toast if user was disconnected before
     if (socket.io.engine.transport.name === "websocket") {
       showToast("✅ Kết nối thành công", "success", 2000);
     }
   });
 
   socket.on("disconnect", () => {
-    console.log("❌ Disconnected from server");
     isConnected = false;
     showConnectionBanner("⚠️ Mất kết nối - Đang kết nối lại...", false);
   });
@@ -82,27 +73,22 @@
 
   socket.on("auth:status", (user) => {
     currentUser = user;
-    console.log(`👤 Logged in as: ${user.username} (${user.role})`);
   });
 
-  // Handle force logout (when another admin logs in)
   socket.on("admin:force-logout", async (data) => {
     console.warn("🚨 Force logout:", data.reason);
 
-    // Show alert to user
     await customConfirm(
       `${data.reason}\n\nBạn đã bị đăng xuất.`,
       "⚠️ Đăng xuất"
     );
 
-    // Clear session
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch (error) {
       console.error("Logout error:", error);
     }
 
-    // Reset to guest
     currentUser = { username: "Guest", role: "guest" };
     showToast(
       "⚠️ Bạn đã bị đăng xuất do admin khác đăng nhập",
@@ -110,7 +96,6 @@
       5000
     );
 
-    // Return to empty/game state
     checkGameState();
   });
 
@@ -119,26 +104,11 @@
     showToast(`❌ ${data.message}`, "error");
   });
 
-  // Listen for real-time game updates
-  // Track previous state to detect changes
   let previousState = null;
 
   socket.on("game:updated", async (gameState) => {
-    console.log("📡 Game updated:", {
-      isActive: gameState.isActive,
-      order: gameState.order,
-      currentIndex: gameState.currentIndex,
-      roundNumber: gameState.roundNumber,
-      actedThisRound: gameState.actedThisRound,
-      erroredThisRound: gameState.erroredThisRound,
-    });
-
-    // Check if game is active
     if (gameState.isActive && gameState.order && gameState.order.length > 0) {
-      // Show game section with updated state
       showGameSection(gameState);
-
-      // Fetch and display full history from server
       await refreshGameHistory();
 
       previousState = {
@@ -146,7 +116,6 @@
         roundNumber: gameState.roundNumber,
       };
     } else {
-      // Game ended or reset - show appropriate screen
       if (currentUser.role === "admin") {
         showSetupSection();
       } else {
@@ -157,15 +126,12 @@
   });
 
   socket.on("game:win", (data) => {
-    console.log("🏆 Winner:", data.winner);
     pushLog(`🏆 ${data.winner} thắng! Ván mới bắt đầu`);
   });
 
-  // Players will be loaded from API
   let allPlayers = [];
   let defaultPlayers = [];
 
-  // DOM
   const emptyState = document.getElementById("empty-state");
   const setupSection = document.getElementById("setup");
   const gameSection = document.getElementById("game");
@@ -178,7 +144,6 @@
   const logoutBtn = document.getElementById("logout-btn");
   const startBtn = document.getElementById("start-game");
 
-  // Modal elements
   const confirmModal = document.getElementById("confirm-modal");
   const confirmTitle = document.getElementById("confirm-title");
   const confirmMessage = document.getElementById("confirm-message");
@@ -193,21 +158,17 @@
   const logEl = document.getElementById("log");
   const toggleLogBtn = document.getElementById("toggle-log");
 
-  // Toggle log visibility
   toggleLogBtn.addEventListener("click", () => {
     logEl.classList.toggle("hidden");
     toggleLogBtn.classList.toggle("active");
   });
 
-  // Quick-select controls
   let errorSelect, errorApplyBtn, winSelect, winApplyBtn;
 
-  // State
   let setupOrder = [...defaultPlayers];
   let order = [];
   let currentIndex = 0; // whose turn in `order`
   const history = [];
-  // Round/match state
   let movesCount = 0; // number of turns taken in current match
   let roundNumber = 1;
   let matchNumber = 0; // Số trận đấu
@@ -220,7 +181,6 @@
   let breakerPlayer = null; // Người phá bi của trận này
   let playerThemes = {}; // Theme của từng người chơi {playerName: themeName}
 
-  // 5 themes khác nhau
   const themes = [
     { name: "lightning", icon: "⚡", label: "Phá bi" },
     { name: "fire", icon: "🔥", label: "Lửa" },
@@ -230,7 +190,6 @@
   ];
 
   const shuffleThemes = (players) => {
-    // Shuffle themes và gán cho người chơi
     const shuffledThemes = [...themes].sort(() => Math.random() - 0.5);
     const themeMap = {};
     players.forEach((player, i) => {
@@ -239,7 +198,6 @@
     return themeMap;
   };
 
-  // ---------- Helpers ----------
   const renderSetupList = () => {
     playerList.innerHTML = "";
     setupOrder.forEach((name, i) => {
@@ -258,7 +216,6 @@
       playerList.appendChild(li);
     });
 
-    // Add click handlers for remove buttons
     playerList.querySelectorAll(".btn-remove").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -277,7 +234,6 @@
 
     availableList.innerHTML = "";
 
-    // Filter out players already in setupOrder
     const available = allPlayers.filter((name) => !setupOrder.includes(name));
 
     if (available.length === 0) {
@@ -290,7 +246,6 @@
       const li = document.createElement("li");
       li.className = "available-player";
 
-      // Disable if already at max
       const isDisabled = setupOrder.length >= 5;
 
       li.innerHTML = `
@@ -302,10 +257,8 @@
       availableList.appendChild(li);
     });
 
-    // Add click handlers for add buttons
     availableList.querySelectorAll(".btn-add").forEach((btn) => {
       btn.addEventListener("click", () => {
-        // Prevent adding if already at maximum
         if (setupOrder.length >= 5) {
           return;
         }
@@ -323,7 +276,6 @@
     order.forEach((name, i) => {
       const li = document.createElement("li");
 
-      // Get theme cho người chơi này
       const theme = playerThemes[name];
       const isBreaker = name === breakerPlayer;
 
@@ -341,7 +293,6 @@
       if (theme) li.classList.add(`theme-${theme.name}`);
       if (isBreaker && theme) li.classList.add(`breaker-animated`);
 
-      // Tap/Long-press handlers per item
       attachTapHandlers(li, name);
       currentOrderEl.appendChild(li);
     });
@@ -352,7 +303,6 @@
     const roundText = round ? `[Vòng ${round}] ` : "";
     li.textContent = `${roundText}${text}`;
     logEl.prepend(li);
-    // Keep only last 20 entries (increased for auto-fill)
     while (logEl.children.length > 20) {
       logEl.removeChild(logEl.lastChild);
     }
@@ -367,12 +317,9 @@
       }
 
       const history = await response.json();
-      console.log("📜 Fetched history:", history.length, "entries");
 
-      // Clear existing log
       logEl.innerHTML = "";
 
-      // Display history in reverse order (newest first)
       for (let i = history.length - 1; i >= 0; i--) {
         const entry = history[i];
         const stateAfter = entry.stateAfter;
@@ -465,14 +412,12 @@
     }
   };
 
-  // ---------- DnD for setup ----------
   let dragIndex = null;
   let touchDragEl = null;
   let touchStartY = 0;
   let touchCurrentY = 0;
   let isDragging = false;
 
-  // Desktop drag events
   playerList.addEventListener("dragstart", (e) => {
     const li = e.target.closest("li");
     if (!li) return;
@@ -494,13 +439,11 @@
     renderSetupList();
   });
 
-  // Mobile touch events - simpler approach: track hover, swap on drop
   let lastHoverIndex = null;
 
   playerList.addEventListener(
     "touchstart",
     (e) => {
-      // Ignore if touching remove button
       if (e.target.closest(".btn-remove")) return;
 
       const li = e.target.closest("li");
@@ -527,12 +470,10 @@
       touchCurrentY = e.touches[0].clientY;
       const deltaY = touchCurrentY - touchStartY;
 
-      // Visual feedback only - don't modify array yet
       touchDragEl.style.transform = `translateY(${deltaY}px)`;
       touchDragEl.style.opacity = "0.7";
       touchDragEl.style.zIndex = "1000";
 
-      // Find what we're hovering over
       touchDragEl.style.pointerEvents = "none";
       const elementBelow = document.elementFromPoint(
         e.touches[0].clientX,
@@ -559,14 +500,12 @@
       lastHoverIndex !== null &&
       lastHoverIndex !== dragIndex
     ) {
-      // Perform swap
       const updated = [...setupOrder];
       const [moved] = updated.splice(dragIndex, 1);
       updated.splice(lastHoverIndex, 0, moved);
       setupOrder = updated;
       renderSetupList();
     } else if (touchDragEl) {
-      // Just reset styles
       touchDragEl.style.transform = "";
       touchDragEl.style.opacity = "";
       touchDragEl.style.zIndex = "";
@@ -583,10 +522,7 @@
   playerList.addEventListener("touchend", finishTouch, { passive: false });
   playerList.addEventListener("touchcancel", finishTouch, { passive: false });
 
-  // ---------- Actions ----------
-
   startBtn.addEventListener("click", async () => {
-    // Validate 3-5 players
     if (setupOrder.length < 3) {
       await customConfirm(
         "Cần ít nhất 3 người chơi để bắt đầu.",
@@ -603,17 +539,14 @@
       return;
     }
 
-    // Show loading state
     startBtn.disabled = true;
     startBtn.classList.add("loading");
     const originalText = startBtn.textContent;
     startBtn.textContent = "Đang khởi tạo...";
 
     try {
-      // Emit socket event to start game
       socket.emit("game:start", { order: setupOrder });
 
-      // Initialize local state
       order = [...setupOrder];
       currentIndex = 0;
       movesCount = 0;
@@ -631,7 +564,6 @@
       setupSection.classList.add("hidden");
       gameSection.classList.remove("hidden");
 
-      // Admin đang chơi game - show controls
       backBtn.classList.remove("hidden");
 
       showToast("🎮 Trận đấu bắt đầu!", "success");
@@ -655,200 +587,6 @@
 
     renderOrder();
   });
-
-  // ============================================================
-  // CLIENT-SIDE GAME LOGIC - DEPRECATED
-  // All game logic is now handled by server. These functions are
-  // kept for reference only and should NOT be called.
-  // ============================================================
-
-  /*
-  const handleError = () => {
-    // Người lỗi: mất lượt trong vòng này, người trước được hưởng lợi (nếu chưa lỗi)
-    if (order.length <= 1) return;
-    const n = order.length;
-    const current = order[currentIndex];
-
-    // Đánh dấu người này đã lỗi
-    actedThisRound.add(current);
-    erroredThisRound.add(current);
-    movesCount += 1;
-
-    // Trường hợp đặc biệt: Cú đầu tiên của ván (phá bi) bị lỗi → không swap
-    // Check: Người này phải là người phá bi (breakerPlayer) VÀ vòng 1 VÀ chưa ai hành động
-    const isFirstMoveOfMatch =
-      current === breakerPlayer &&
-      roundNumber === 1 &&
-      actedThisRound.size === 1;
-
-    if (isFirstMoveOfMatch) {
-      // Chỉ advance sang người tiếp theo
-      lastActedPlayer = current;
-      currentIndex = (currentIndex + 1) % n;
-      pushLog(`${current} lỗi (phá bi)`);
-      maybeAdvanceRound();
-      renderOrder();
-      return;
-    }
-
-    // Logic: chỉ kiểm tra người NGAY TRƯỚC trong danh sách
-    const prevIndex = (currentIndex - 1 + n) % n;
-    const prevPlayer = order[prevIndex];
-
-    // Kiểm tra: người trước có được hưởng lợi không?
-    // Điều kiện: chưa lỗi (erroredThisRound giờ track lỗi xuyên vòng, chỉ xóa khi đánh thành công)
-    const prevErrored = erroredThisRound.has(prevPlayer);
-
-    if (!prevErrored) {
-      // Swap: người lỗi với người trước
-      // TRƯỚC swap: currentIndex=3 (Tân), prevIndex=2 (Duy Thuần)
-      const tmp = order[prevIndex];
-      order[prevIndex] = order[currentIndex];
-      order[currentIndex] = tmp;
-      // SAU swap: currentIndex=3 (Duy Thuần), prevIndex=2 (Tân)
-
-      // currentIndex không đổi, vẫn chỉ vào người được hưởng lợi (Duy Thuần ở vị trí 3)
-
-      pushLog(`${current} lỗi → ${prevPlayer} được đánh lại`);
-    } else {
-      // Người trước đã lỗi → không swap, advance sang người tiếp theo
-      currentIndex = (currentIndex + 1) % n;
-      pushLog(`${current} lỗi`);
-    }
-
-    lastActedPlayer = current; // Track người vừa lỗi
-    maybeAdvanceRound();
-    renderOrder();
-  };
-
-  const handleWin = () => {
-    // Người thắng: kết thúc ván, sắp xếp lại cho ván mới
-    const winnerIndex = currentIndex;
-    const winner = order[winnerIndex];
-    const finalThisMatch = snapshotOrder();
-
-    let nextMatchOrder;
-
-    // Trường hợp đặc biệt: vòng 1 và người đầu tiên thắng → giữ nguyên
-    if (roundNumber === 1 && winnerIndex === 0) {
-      nextMatchOrder = [...order];
-    } else {
-      // Logic mới:
-      // 1. Người thắng (winner) - vị trí 1
-      // 2. Người trước người thắng (loser) - vị trí 2
-      // 3. Người sau người thắng (waiter) - vị trí 3
-      // 4. Các người còn lại xếp ngược từ gần người thắng nhất
-
-      const n = order.length;
-      const loserIndex = (winnerIndex - 1 + n) % n; // wrap around
-      const waiterIndex = (winnerIndex + 1) % n; // wrap around
-
-      const loser = order[loserIndex];
-      const waiter = order[waiterIndex];
-
-      // Lấy các người còn lại (không phải winner, loser, waiter)
-      const others = [];
-      for (let i = 0; i < n; i++) {
-        if (i !== winnerIndex && i !== loserIndex && i !== waiterIndex) {
-          others.push(order[i]);
-        }
-      }
-
-      // Sắp xếp others: người xa winner nhất đi trước, người gần nhất đi cuối
-      // Tính khoảng cách từ mỗi người tới winner (theo chiều ngược kim đồng hồ)
-      const othersWithDistance = others.map((name) => {
-        const idx = order.indexOf(name);
-        const distance = (winnerIndex - idx + n) % n;
-        return { name, distance };
-      });
-
-      // Sort giảm dần theo distance (xa winner nhất trước, gần nhất cuối)
-      othersWithDistance.sort((a, b) => b.distance - a.distance);
-      const sortedOthers = othersWithDistance.map((o) => o.name);
-
-      // Xếp lại: winner - loser - waiter - others
-      nextMatchOrder = [winner, loser, waiter, ...sortedOthers];
-    }
-
-    pushLog(`🏆 ${winner} thắng! Ván mới bắt đầu`);
-    history.push({
-      type: "win",
-      winner,
-      final: finalThisMatch,
-      next: nextMatchOrder.join(" "),
-    });
-
-    // Bắt đầu ván mới
-    order = nextMatchOrder;
-    currentIndex = 0;
-    movesCount = 0;
-    roundNumber = 1;
-    matchNumber += 1; // Tăng số trận
-    breakerPlayer = order[0]; // Người thắng là người phá bi ván mới
-    playerThemes = shuffleThemes(order); // Random themes mới
-    lastActedPlayer = null; // Reset người đánh gần nhất
-    lastRoundLastPlayer = null;
-    lastRoundErrors = new Set();
-    erroredThisRound = new Set(); // Reset trạng thái lỗi
-    resetRound(order[0]);
-
-    const roundNumEl = document.getElementById("round-number");
-    if (roundNumEl) roundNumEl.textContent = String(roundNumber);
-
-    const matchNumEl = document.getElementById("match-number");
-    if (matchNumEl) matchNumEl.textContent = String(matchNumber);
-
-    renderOrder();
-  };
-
-  const handleSuccess = (shouldRender = true) => {
-    // Người chơi đánh thành công (không lỗi) → advance sang người tiếp theo
-    const current = order[currentIndex];
-
-    actedThisRound.add(current);
-    movesCount += 1;
-    lastActedPlayer = current; // Track người vừa đánh xong
-
-    // Xóa trạng thái lỗi của người này (nếu có)
-    erroredThisRound.delete(current);
-
-    // Advance to next player
-    currentIndex = (currentIndex + 1) % order.length;
-
-    pushLog(`${current} ✓`);
-    maybeAdvanceRound();
-
-    if (shouldRender) {
-      renderOrder();
-    }
-  };
-
-  // ---------- Quick-select behaviors ----------
-  const fastForwardToPlayer = (playerName) => {
-    // Chỉ advance đến người được chọn, không advance quá
-    let safety = 0;
-    while (order[currentIndex] !== playerName && safety < 10_000) {
-      const current = order[currentIndex];
-
-      // Nếu người này đã acted (lỗi) rồi → skip
-      if (actedThisRound.has(current)) {
-        currentIndex = (currentIndex + 1) % order.length;
-      } else {
-        // Chưa acted → giả định thành công (chỉ update state, không render)
-        actedThisRound.add(current);
-        movesCount += 1; // Tăng movesCount để không bị nhầm với cú phá bi
-        currentIndex = (currentIndex + 1) % order.length;
-        pushLog(`${current} không lỗi`);
-      }
-
-      safety++;
-    }
-  };
-  */
-
-  // ============================================================
-  // END OF DEPRECATED CLIENT-SIDE LOGIC
-  // ============================================================
 
   let isProcessing = false; // Flag để ngăn multiple calls
 
@@ -1115,7 +853,6 @@
       Object.keys(playerThemes).length === 0 ||
       playerThemes[order[0]] === undefined
     ) {
-      console.log("🎨 Regenerating player themes");
       playerThemes = shuffleThemes(order);
     }
 
@@ -1147,18 +884,15 @@
   };
 
   const showEmptyState = () => {
-    console.log("🔧 showEmptyState", { currentUser });
     emptyState.classList.remove("hidden");
     setupSection.classList.add("hidden");
     gameSection.classList.add("hidden");
 
     // Show appropriate button based on user role
     if (currentUser.role === "admin") {
-      console.log("👤 Admin → Show logout, hide login");
       adminLoginBtn.classList.add("hidden");
       logoutBtn.classList.remove("hidden");
     } else {
-      console.log("👤 Guest → Show login, hide logout");
       adminLoginBtn.classList.remove("hidden");
       logoutBtn.classList.add("hidden");
     }
@@ -1188,7 +922,6 @@
 
   // Cancel login
   cancelLoginBtn.addEventListener("click", (e) => {
-    console.log("🔴 Cancel button clicked!");
     e.preventDefault();
     e.stopPropagation();
     loginModal.classList.add("hidden");
@@ -1213,7 +946,6 @@
     const password = document.getElementById("password").value;
     const submitBtn = loginForm.querySelector('button[type="submit"]');
 
-    // Show loading state
     submitBtn.disabled = true;
     submitBtn.classList.add("loading");
     const originalText = submitBtn.textContent;
@@ -1242,7 +974,6 @@
         // Wait for reconnection to complete before proceeding
         await new Promise((resolve) => {
           socket.once("connect", () => {
-            console.log("🔄 Socket reconnected with admin session");
             resolve();
           });
           socket.connect();
@@ -1251,7 +982,6 @@
         await checkGameState(); // Check if there's an active game
         hideLoading();
         showToast(`✅ Đăng nhập thành công`, "success");
-        console.log("✅ Logged in as:", data.user.username);
       } else {
         loginError.textContent = data.error || "Đăng nhập thất bại";
         loginError.classList.remove("hidden");
@@ -1291,10 +1021,8 @@
 
     currentUser = { username: "Guest", role: "guest" };
     checkGameState(); // Go back to game or empty state
-    console.log("👋 Logged out");
   });
 
-  // ---------- Init ----------
   fetchPlayers();
   checkAuth(); // Check if already logged in
 })();

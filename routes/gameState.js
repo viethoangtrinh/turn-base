@@ -87,12 +87,10 @@ router.post("/error", isAdmin, async (req, res) => {
       return res.status(400).json({ error: "Game is not active" });
     }
 
-    // Add to errored list
     if (!state.erroredThisRound.includes(playerName)) {
       state.erroredThisRound.push(playerName);
     }
 
-    // Add to acted list
     if (!state.actedThisRound.includes(playerName)) {
       state.actedThisRound.push(playerName);
     }
@@ -122,7 +120,6 @@ router.post("/success", isAdmin, async (req, res) => {
       return res.status(400).json({ error: "Game is not active" });
     }
 
-    // Add to acted list
     if (!state.actedThisRound.includes(playerName)) {
       state.actedThisRound.push(playerName);
     }
