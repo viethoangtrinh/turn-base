@@ -120,7 +120,10 @@
   });
 
   // Listen for real-time game updates
-  socket.on("game:updated", (gameState) => {
+  // Track previous state to detect changes
+  let previousState = null;
+
+  socket.on("game:updated", async (gameState) => {
     console.log("📡 Game updated:", {
       isActive: gameState.isActive,
       order: gameState.order,
@@ -134,6 +137,14 @@
     if (gameState.isActive && gameState.order && gameState.order.length > 0) {
       // Show game section with updated state
       showGameSection(gameState);
+
+      // Fetch and display full history from server
+      await refreshGameHistory();
+
+      previousState = {
+        movesCount: gameState.movesCount,
+        roundNumber: gameState.roundNumber,
+      };
     } else {
       // Game ended or reset - show appropriate screen
       if (currentUser.role === "admin") {
@@ -141,6 +152,7 @@
       } else {
         showEmptyState();
       }
+      previousState = null;
     }
   });
 
@@ -335,13 +347,43 @@
     });
   };
 
-  const pushLog = (text) => {
+  const pushLog = (text, round) => {
     const li = document.createElement("li");
-    li.textContent = `[Vòng ${roundNumber}] ${text}`;
+    const roundText = round ? `[Vòng ${round}] ` : "";
+    li.textContent = `${roundText}${text}`;
     logEl.prepend(li);
-    // Keep only last 5 entries
-    while (logEl.children.length > 5) {
+    // Keep only last 20 entries (increased for auto-fill)
+    while (logEl.children.length > 20) {
       logEl.removeChild(logEl.lastChild);
+    }
+  };
+
+  const refreshGameHistory = async () => {
+    try {
+      const response = await fetch("/api/history");
+      if (!response.ok) {
+        console.error("Failed to fetch history:", response.status);
+        return;
+      }
+
+      const history = await response.json();
+      console.log("📜 Fetched history:", history.length, "entries");
+
+      // Clear existing log
+      logEl.innerHTML = "";
+
+      // Display history in reverse order (newest first)
+      for (let i = history.length - 1; i >= 0; i--) {
+        const entry = history[i];
+        const stateAfter = entry.stateAfter;
+        const round = stateAfter
+          ? stateAfter.roundNumber
+          : entry.stateBefore.roundNumber;
+
+        pushLog(entry.description, round);
+      }
+    } catch (error) {
+      console.error("Failed to fetch game history:", error);
     }
   };
 

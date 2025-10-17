@@ -3,6 +3,7 @@ const GameHistory = require("../models/GameHistory");
 const {
   handlePlayerError,
   handlePlayerSuccess,
+  calculateNextMatchOrder,
 } = require("../utils/gameLogic");
 
 module.exports = (io, socket) => {
@@ -14,6 +15,63 @@ module.exports = (io, socket) => {
 
   // Helper: Get username for logging
   const getUsername = () => getSession()?.username || "Unknown";
+
+  /**
+   * Auto-fill skipped players with SUCCESS
+   * If user clicks on a player that's not the current turn,
+   * automatically fill all players from currentIndex to targetIndex as SUCCESS
+   */
+  const autoFillSkippedPlayers = async (state, targetIndex) => {
+    const { order, currentIndex, actedThisRound } = state;
+    const n = order.length;
+
+    let idx = currentIndex;
+    const playersToFill = [];
+
+    // Calculate how many players to auto-fill
+    while (idx !== targetIndex) {
+      const player = order[idx];
+
+      // Only fill if player hasn't acted this round yet
+      if (!actedThisRound.includes(player)) {
+        playersToFill.push(player);
+      }
+
+      idx = (idx + 1) % n;
+
+      // Safety check: prevent infinite loop
+      if (playersToFill.length > n) break;
+    }
+
+    // Fill all skipped players as SUCCESS
+    for (const player of playersToFill) {
+      // Save state before change
+      const stateBefore = state.toObject();
+
+      if (!state.actedThisRound.includes(player)) {
+        state.actedThisRound.push(player);
+      }
+
+      // Advance turn using handlePlayerSuccess
+      state.currentIndex = state.order.indexOf(player);
+      handlePlayerSuccess(state);
+
+      state.movesCount += 1;
+      state.lastActedPlayer = player;
+
+      // Save to history
+      await GameHistory.create({
+        eventType: "SUCCESS",
+        playerName: player,
+        stateBefore,
+        stateAfter: state.toObject(),
+        matchNumber: state.matchNumber,
+        description: `${player} thành công (tự động)`,
+      });
+
+      console.log(`✅ [AUTO-FILL] ${player} thành công (skipped)`);
+    }
+  };
 
   // Handle game start
   socket.on("game:start", async (data) => {
@@ -36,7 +94,8 @@ module.exports = (io, socket) => {
       state.order = order;
       state.currentIndex = 0;
       state.roundNumber = 1;
-      state.matchNumber += 1; // Increment match number
+      // Don't increment matchNumber here - only increment on win
+      // First match should be "Trận 1", not "Trận 2"
       state.movesCount = 0;
       state.actedThisRound = [];
       state.erroredThisRound = [];
@@ -72,6 +131,20 @@ module.exports = (io, socket) => {
 
       // Save state before change (for undo)
       const stateBefore = state.toObject();
+
+      // Find player index in order
+      const playerIndex = state.order.indexOf(playerName);
+      if (playerIndex === -1) {
+        return socket.emit("error", { message: "Player not found in order" });
+      }
+
+      // AUTO-FILL: If target player is not current turn, fill skipped players
+      if (playerIndex !== state.currentIndex) {
+        await autoFillSkippedPlayers(state, playerIndex);
+      }
+
+      // Now set currentIndex to the erroring player
+      state.currentIndex = playerIndex;
 
       // Add to errored list
       if (!state.erroredThisRound.includes(playerName)) {
@@ -130,6 +203,20 @@ module.exports = (io, socket) => {
 
       // Save state before change
       const stateBefore = state.toObject();
+
+      // Find player index in order
+      const playerIndex = state.order.indexOf(playerName);
+      if (playerIndex === -1) {
+        return socket.emit("error", { message: "Player not found in order" });
+      }
+
+      // AUTO-FILL: If target player is not current turn, fill skipped players
+      if (playerIndex !== state.currentIndex) {
+        await autoFillSkippedPlayers(state, playerIndex);
+      }
+
+      // Now set currentIndex to the succeeding player
+      state.currentIndex = playerIndex;
 
       // Add to acted list
       if (!state.actedThisRound.includes(playerName)) {
@@ -199,19 +286,32 @@ module.exports = (io, socket) => {
         description: `${playerName} thắng`,
       });
 
+      // Calculate new order for next match
+      const winnerIndex = state.order.indexOf(playerName);
+      const nextOrder = calculateNextMatchOrder(state.order, winnerIndex);
+
       // Clear history of current match
       await GameHistory.deleteMany({ matchNumber: state.matchNumber });
 
-      // End game - admin must manually start a new one
-      await GameState.resetGame();
+      // Start new match automatically with new order
+      state.matchNumber += 1; // Increment for next match
+      state.order = nextOrder;
+      state.currentIndex = 0;
+      state.roundNumber = 1;
+      state.movesCount = 0;
+      state.actedThisRound = [];
+      state.erroredThisRound = [];
+      state.breakerPlayer = nextOrder[0]; // Winner is breaker
+      state.isActive = true;
+
+      await state.save();
 
       // Broadcast to ALL clients
-      const newState = await GameState.getSingleton();
-      io.emit("game:updated", newState);
-      io.emit("game:win", { winner: playerName });
+      io.emit("game:updated", state);
+      io.emit("game:win", { winner: playerName, nextMatch: state.matchNumber });
 
       console.log(
-        `🏆 ${playerName} thắng trận ${state.matchNumber}! Game ended.`
+        `🏆 ${playerName} thắng trận ${stateBefore.matchNumber}! Trận ${state.matchNumber} bắt đầu.`
       );
     } catch (error) {
       socket.emit("error", { message: error.message });
