@@ -22,6 +22,14 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    activeSessionId: {
+      type: String,
+      default: null,
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

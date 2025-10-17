@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const GameState = require("../models/GameState");
 
 // POST /api/auth/login
 router.post("/login", async (req, res) => {
@@ -23,10 +24,36 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // Create session
+    // If admin and has active session → kick old session
+    const io = req.app.get("io");
+    if (user.role === "admin" && user.activeSessionId && io) {
+      // Emit event to force logout old admin
+      io.emit("admin:force-logout", {
+        oldSessionId: user.activeSessionId,
+        reason: "New admin login from another device",
+      });
+      console.log(`🚨 Kicked old admin session: ${user.activeSessionId}`);
+    }
+
+    // Create new session
     req.session.userId = user._id.toString();
     req.session.username = user.username;
     req.session.role = user.role;
+
+    // Save new session ID to database
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const newSessionId = req.session.id;
+    user.activeSessionId = newSessionId;
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    console.log(`✅ Admin login: ${user.username} (Session: ${newSessionId})`);
 
     res.json({
       message: "Login successful",
@@ -41,13 +68,44 @@ router.post("/login", async (req, res) => {
 });
 
 // POST /api/auth/logout
-router.post("/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) {
-      return res.status(500).json({ error: "Logout failed" });
+router.post("/logout", async (req, res) => {
+  const userId = req.session.userId;
+  const sessionId = req.session.id;
+  const role = req.session.role;
+
+  try {
+    // Clear activeSessionId from database if this is admin
+    if (userId) {
+      const user = await User.findById(userId);
+      if (user && user.activeSessionId === sessionId) {
+        user.activeSessionId = null;
+        await user.save();
+        console.log(`👋 Admin logout: ${user.username}`);
+      }
     }
-    res.json({ message: "Logout successful" });
-  });
+
+    // If admin logs out, end any active game
+    if (role === "admin") {
+      const gameState = await GameState.getSingleton();
+      if (gameState.isActive) {
+        await GameState.resetGame();
+        const io = req.app.get("io");
+        if (io) {
+          io.emit("game:updated", await GameState.getSingleton());
+        }
+        console.log(`🛑 Game ended because admin logged out`);
+      }
+    }
+
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.json({ message: "Logout successful" });
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // GET /api/auth/me

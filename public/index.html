@@ -61,16 +61,15 @@
         <img src="/assets/duy-brothers.png" alt="Duy Brothers" class="logo" />
       </div>
 
-      <!-- Empty State (when no game) -->
-      <section id="empty-state" class="hidden">
+      <!-- Empty State (when no game) - Visible by default -->
+      <section id="empty-state">
         <div class="empty-state-content">
           <div class="empty-icon">🎱</div>
           <h2>Chưa có trận đấu nào</h2>
-          <p>Admin cần đăng nhập để bắt đầu trận đấu mới</p>
         </div>
       </section>
 
-      <section id="setup">
+      <section id="setup" class="hidden">
         <h2>Lại nghiện rồi đấy =))</h2>
         <p class="hint">Chọn 3-5 người chơi. Kéo thả để sắp xếp thứ tự.</p>
         <ul
@@ -131,6 +130,22 @@
           <button id="confirm-cancel" class="modal-btn secondary">Hủy</button>
           <button id="confirm-ok" class="modal-btn primary">Xác nhận</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Connection Status Banner -->
+    <div id="connection-banner" class="connection-banner hidden">
+      <span id="connection-message">⚠️ Mất kết nối - Đang kết nối lại...</span>
+    </div>
+
+    <!-- Global Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+      <div>
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text">Đang xử lý...</div>
       </div>
     </div>
 

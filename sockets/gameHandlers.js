@@ -1,12 +1,19 @@
 const GameState = require("../models/GameState");
 const GameHistory = require("../models/GameHistory");
+const {
+  handlePlayerError,
+  handlePlayerSuccess,
+} = require("../utils/gameLogic");
 
 module.exports = (io, socket) => {
-  const session = socket.request.session;
-  const role = session?.role || "guest";
+  // Helper: Get current session (real-time, not cached)
+  const getSession = () => socket.request.session;
 
   // Helper: Check if user is admin
-  const isAdmin = () => role === "admin";
+  const isAdmin = () => getSession()?.role === "admin";
+
+  // Helper: Get username for logging
+  const getUsername = () => getSession()?.username || "Unknown";
 
   // Handle game start
   socket.on("game:start", async (data) => {
@@ -18,10 +25,18 @@ module.exports = (io, socket) => {
       const { order } = data;
       const state = await GameState.getSingleton();
 
+      // Prevent starting a new game if one is already active
+      if (state.isActive) {
+        return socket.emit("error", {
+          message:
+            "Đã có trận đấu đang diễn ra. Vui lòng kết thúc trận hiện tại trước.",
+        });
+      }
+
       state.order = order;
       state.currentIndex = 0;
       state.roundNumber = 1;
-      state.matchNumber = 1;
+      state.matchNumber += 1; // Increment match number
       state.movesCount = 0;
       state.actedThisRound = [];
       state.erroredThisRound = [];
@@ -33,7 +48,9 @@ module.exports = (io, socket) => {
       // Broadcast to ALL clients (including sender)
       io.emit("game:updated", state);
 
-      console.log(`🎮 Game started by ${session.username}`);
+      console.log(
+        `🎮 Game started by ${getUsername()} (Match ${state.matchNumber})`
+      );
     } catch (error) {
       socket.emit("error", { message: error.message });
     }
@@ -69,6 +86,9 @@ module.exports = (io, socket) => {
       state.movesCount += 1;
       state.lastActedPlayer = playerName;
 
+      // Apply game logic (advance turn, check round completion, etc.)
+      handlePlayerError(state);
+
       await state.save();
 
       // Save history for undo
@@ -84,7 +104,11 @@ module.exports = (io, socket) => {
       // Broadcast to ALL clients
       io.emit("game:updated", state);
 
-      console.log(`❌ ${playerName} lỗi (by ${session.username})`);
+      console.log(
+        `❌ ${playerName} lỗi (by ${getUsername()}) → Turn: ${
+          state.order[state.currentIndex]
+        }, Round: ${state.roundNumber}`
+      );
     } catch (error) {
       socket.emit("error", { message: error.message });
     }
@@ -120,6 +144,9 @@ module.exports = (io, socket) => {
       state.movesCount += 1;
       state.lastActedPlayer = playerName;
 
+      // Apply game logic (advance turn, check round completion, etc.)
+      handlePlayerSuccess(state);
+
       await state.save();
 
       // Save history
@@ -135,7 +162,11 @@ module.exports = (io, socket) => {
       // Broadcast to ALL clients
       io.emit("game:updated", state);
 
-      console.log(`✅ ${playerName} thành công (by ${session.username})`);
+      console.log(
+        `✅ ${playerName} thành công (by ${getUsername()}) → Turn: ${
+          state.order[state.currentIndex]
+        }, Round: ${state.roundNumber}`
+      );
     } catch (error) {
       socket.emit("error", { message: error.message });
     }
@@ -168,37 +199,19 @@ module.exports = (io, socket) => {
         description: `${playerName} thắng`,
       });
 
-      // Clear history of current match (as per requirement)
+      // Clear history of current match
       await GameHistory.deleteMany({ matchNumber: state.matchNumber });
 
-      // Update state for new match
-      const winnerIndex = state.order.indexOf(playerName);
-      if (winnerIndex !== -1) {
-        // Move winner to front
-        const newOrder = [
-          playerName,
-          ...state.order.filter((p) => p !== playerName),
-        ];
-        state.order = newOrder;
-      }
-
-      state.currentIndex = 0;
-      state.roundNumber = 1;
-      state.matchNumber += 1;
-      state.movesCount = 0;
-      state.actedThisRound = [];
-      state.erroredThisRound = [];
-      state.breakerPlayer = playerName;
-      state.isActive = true;
-
-      await state.save();
+      // End game - admin must manually start a new one
+      await GameState.resetGame();
 
       // Broadcast to ALL clients
-      io.emit("game:updated", state);
+      const newState = await GameState.getSingleton();
+      io.emit("game:updated", newState);
       io.emit("game:win", { winner: playerName });
 
       console.log(
-        `🏆 ${playerName} thắng! Match ${state.matchNumber - 1} kết thúc`
+        `🏆 ${playerName} thắng trận ${state.matchNumber}! Game ended.`
       );
     } catch (error) {
       socket.emit("error", { message: error.message });
@@ -220,7 +233,7 @@ module.exports = (io, socket) => {
       // Broadcast to ALL clients
       io.emit("game:updated", state);
 
-      console.log(`🔄 Game reset by ${session.username}`);
+      console.log(`🔄 Game reset by ${getUsername()}`);
     } catch (error) {
       socket.emit("error", { message: error.message });
     }
@@ -254,7 +267,7 @@ module.exports = (io, socket) => {
       // Broadcast to ALL clients
       io.emit("game:updated", state);
 
-      console.log(`↩️ Undo by ${session.username}`);
+      console.log(`↩️ Undo by ${getUsername()}`);
     } catch (error) {
       socket.emit("error", { message: error.message });
     }

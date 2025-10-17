@@ -5,12 +5,14 @@ const MongoStore = require("connect-mongo");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
+const mongoose = require("mongoose");
 const connectDB = require("./config/database");
 const playersRouter = require("./routes/players");
 const gameStateRouter = require("./routes/gameState");
 const gameHistoryRouter = require("./routes/gameHistory");
 const authRouter = require("./routes/auth");
 const gameHandlers = require("./sockets/gameHandlers");
+const User = require("./models/User");
 
 const app = express();
 const httpServer = createServer(app);
@@ -18,7 +20,28 @@ const io = new Server(httpServer);
 const PORT = process.env.PORT || 3000;
 
 // Connect to MongoDB
-connectDB();
+connectDB().then(async () => {
+  // Clear all sessions on server start
+  try {
+    const sessionsCollection = mongoose.connection.collection("sessions");
+    const result = await sessionsCollection.deleteMany({});
+    console.log(`🧹 Cleared ${result.deletedCount} old sessions`);
+
+    // Clear all activeSessionId from users
+    await User.updateMany({}, { activeSessionId: null });
+    console.log(`🧹 Cleared all active admin sessions`);
+
+    // Reset any active game (prevent zombie games)
+    const GameState = require("./models/GameState");
+    const gameState = await GameState.getSingleton();
+    if (gameState.isActive) {
+      await GameState.resetGame();
+      console.log(`🧹 Reset zombie game (was active on server restart)`);
+    }
+  } catch (error) {
+    console.error("⚠️  Failed to clear sessions:", error.message);
+  }
+});
 
 // Session middleware (dùng chung cho Express và Socket.IO)
 const sessionMiddleware = session({

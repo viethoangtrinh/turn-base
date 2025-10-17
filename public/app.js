@@ -4,15 +4,80 @@
   let currentUser = { username: "Guest", role: "guest" };
   let isConnected = false;
 
+  // Toast & Connection Banner & Loading
+  const toastContainer = document.getElementById("toast-container");
+  const connectionBanner = document.getElementById("connection-banner");
+  const connectionMessage = document.getElementById("connection-message");
+  const loadingOverlay = document.getElementById("loading-overlay");
+  const loadingText = document.getElementById("loading-text");
+
+  // Toast Notification System
+  const showToast = (message, type = "info", duration = 3000) => {
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add("hiding");
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  };
+
+  // Connection Banner
+  const showConnectionBanner = (message, reconnecting = false) => {
+    connectionMessage.textContent = message;
+    connectionBanner.classList.remove("hidden");
+    if (reconnecting) {
+      connectionBanner.classList.add("reconnecting");
+    } else {
+      connectionBanner.classList.remove("reconnecting");
+    }
+  };
+
+  const hideConnectionBanner = () => {
+    connectionBanner.classList.add("hidden");
+  };
+
+  // Loading Overlay
+  const showLoading = (message = "Đang xử lý...") => {
+    loadingText.textContent = message;
+    loadingOverlay.classList.remove("hidden");
+    document.body.classList.add("loading");
+  };
+
+  const hideLoading = () => {
+    loadingOverlay.classList.add("hidden");
+    document.body.classList.remove("loading");
+  };
+
   // Socket event listeners
   socket.on("connect", () => {
     console.log("✅ Connected to server");
     isConnected = true;
+    hideConnectionBanner();
+
+    // Only show reconnection toast if user was disconnected before
+    if (socket.io.engine.transport.name === "websocket") {
+      showToast("✅ Kết nối thành công", "success", 2000);
+    }
   });
 
   socket.on("disconnect", () => {
     console.log("❌ Disconnected from server");
     isConnected = false;
+    showConnectionBanner("⚠️ Mất kết nối - Đang kết nối lại...", false);
+  });
+
+  socket.io.on("reconnect_attempt", () => {
+    showConnectionBanner("🔄 Đang kết nối lại...", true);
+  });
+
+  socket.io.on("reconnect_failed", () => {
+    showConnectionBanner(
+      "❌ Không thể kết nối - Vui lòng kiểm tra mạng",
+      false
+    );
   });
 
   socket.on("auth:status", (user) => {
@@ -20,35 +85,61 @@
     console.log(`👤 Logged in as: ${user.username} (${user.role})`);
   });
 
+  // Handle force logout (when another admin logs in)
+  socket.on("admin:force-logout", async (data) => {
+    console.warn("🚨 Force logout:", data.reason);
+
+    // Show alert to user
+    await customConfirm(
+      `${data.reason}\n\nBạn đã bị đăng xuất.`,
+      "⚠️ Đăng xuất"
+    );
+
+    // Clear session
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+
+    // Reset to guest
+    currentUser = { username: "Guest", role: "guest" };
+    showToast(
+      "⚠️ Bạn đã bị đăng xuất do admin khác đăng nhập",
+      "warning",
+      5000
+    );
+
+    // Return to empty/game state
+    checkGameState();
+  });
+
   socket.on("error", (data) => {
     console.error("Socket error:", data.message);
-    alert(`Lỗi: ${data.message}`);
+    showToast(`❌ ${data.message}`, "error");
   });
 
   // Listen for real-time game updates
   socket.on("game:updated", (gameState) => {
-    console.log("📡 Game updated:", gameState);
+    console.log("📡 Game updated:", {
+      isActive: gameState.isActive,
+      order: gameState.order,
+      currentIndex: gameState.currentIndex,
+      roundNumber: gameState.roundNumber,
+      actedThisRound: gameState.actedThisRound,
+      erroredThisRound: gameState.erroredThisRound,
+    });
 
-    // Update local state from server
-    if (gameState.order && Array.isArray(gameState.order)) {
-      order = [...gameState.order];
-      currentIndex = gameState.currentIndex || 0;
-      roundNumber = gameState.roundNumber || 1;
-      matchNumber = gameState.matchNumber || 1;
-      movesCount = gameState.movesCount || 0;
-      actedThisRound = new Set(gameState.actedThisRound || []);
-      erroredThisRound = new Set(gameState.erroredThisRound || []);
-      breakerPlayer = gameState.breakerPlayer || null;
-
-      // Update UI if in game
-      if (!gameSection.classList.contains("hidden")) {
-        renderOrder();
-
-        const roundNumEl = document.getElementById("round-number");
-        if (roundNumEl) roundNumEl.textContent = String(roundNumber);
-
-        const matchNumEl = document.getElementById("match-number");
-        if (matchNumEl) matchNumEl.textContent = String(matchNumber);
+    // Check if game is active
+    if (gameState.isActive && gameState.order && gameState.order.length > 0) {
+      // Show game section with updated state
+      showGameSection(gameState);
+    } else {
+      // Game ended or reset - show appropriate screen
+      if (currentUser.role === "admin") {
+        showSetupSection();
+      } else {
+        showEmptyState();
       }
     }
   });
@@ -470,29 +561,47 @@
       return;
     }
 
-    // Emit socket event to start game
-    socket.emit("game:start", { order: setupOrder });
+    // Show loading state
+    startBtn.disabled = true;
+    startBtn.classList.add("loading");
+    const originalText = startBtn.textContent;
+    startBtn.textContent = "Đang khởi tạo...";
 
-    // Initialize local state
-    order = [...setupOrder];
-    currentIndex = 0;
-    movesCount = 0;
-    roundNumber = 1;
-    matchNumber = 1;
-    breakerPlayer = order[0];
-    playerThemes = shuffleThemes(order);
-    lastActedPlayer = null;
-    lastRoundLastPlayer = null;
-    lastRoundErrors = new Set();
-    erroredThisRound = new Set();
-    resetRound(order[0]);
-    history.push({ type: "start", order: snapshotOrder() });
-    logEl.innerHTML = "";
-    setupSection.classList.add("hidden");
-    gameSection.classList.remove("hidden");
+    try {
+      // Emit socket event to start game
+      socket.emit("game:start", { order: setupOrder });
 
-    // Admin đang chơi game - show controls
-    backBtn.classList.remove("hidden");
+      // Initialize local state
+      order = [...setupOrder];
+      currentIndex = 0;
+      movesCount = 0;
+      roundNumber = 1;
+      matchNumber = 1;
+      breakerPlayer = order[0];
+      playerThemes = shuffleThemes(order);
+      lastActedPlayer = null;
+      lastRoundLastPlayer = null;
+      lastRoundErrors = new Set();
+      erroredThisRound = new Set();
+      resetRound(order[0]);
+      history.push({ type: "start", order: snapshotOrder() });
+      logEl.innerHTML = "";
+      setupSection.classList.add("hidden");
+      gameSection.classList.remove("hidden");
+
+      // Admin đang chơi game - show controls
+      backBtn.classList.remove("hidden");
+
+      showToast("🎮 Trận đấu bắt đầu!", "success");
+    } catch (error) {
+      console.error("Start game error:", error);
+      showToast("❌ Lỗi khi bắt đầu trận đấu", "error");
+    } finally {
+      // Reset loading state
+      startBtn.disabled = false;
+      startBtn.classList.remove("loading");
+      startBtn.textContent = originalText;
+    }
     document.querySelector(".hint").classList.remove("hidden");
     adminLoginBtn.classList.add("hidden");
 
@@ -505,6 +614,13 @@
     renderOrder();
   });
 
+  // ============================================================
+  // CLIENT-SIDE GAME LOGIC - DEPRECATED
+  // All game logic is now handled by server. These functions are
+  // kept for reference only and should NOT be called.
+  // ============================================================
+
+  /*
   const handleError = () => {
     // Người lỗi: mất lượt trong vòng này, người trước được hưởng lợi (nếu chưa lỗi)
     if (order.length <= 1) return;
@@ -517,7 +633,13 @@
     movesCount += 1;
 
     // Trường hợp đặc biệt: Cú đầu tiên của ván (phá bi) bị lỗi → không swap
-    if (movesCount === 1) {
+    // Check: Người này phải là người phá bi (breakerPlayer) VÀ vòng 1 VÀ chưa ai hành động
+    const isFirstMoveOfMatch =
+      current === breakerPlayer &&
+      roundNumber === 1 &&
+      actedThisRound.size === 1;
+
+    if (isFirstMoveOfMatch) {
       // Chỉ advance sang người tiếp theo
       lastActedPlayer = current;
       currentIndex = (currentIndex + 1) % n;
@@ -680,6 +802,11 @@
       safety++;
     }
   };
+  */
+
+  // ============================================================
+  // END OF DEPRECATED CLIENT-SIDE LOGIC
+  // ============================================================
 
   let isProcessing = false; // Flag để ngăn multiple calls
 
@@ -687,31 +814,27 @@
     if (!order.includes(playerName)) return;
     if (isProcessing) return; // Ngăn gọi nhiều lần
     if (currentUser.role !== "admin") {
-      alert("Chỉ admin mới có thể thao tác");
+      showToast("⚠️ Chỉ admin mới có thể thao tác", "warning");
       return;
     }
 
     isProcessing = true;
+    showLoading("Đang xử lý lỗi...");
 
-    // Fast-forward so that it's this player's turn to error
-    fastForwardToPlayer(playerName);
-
-    // Emit socket event for error
+    // Emit socket event - server will handle game logic
     socket.emit("game:error", { playerName });
 
-    // Now trigger error with existing rules (local update)
-    handleError();
-
-    // Delay reset để đảm bảo render xong
+    // Wait for server response (game:updated event will hide loading)
     setTimeout(() => {
       isProcessing = false;
-    }, 300);
+      hideLoading();
+    }, 500);
   };
 
   const applyPickedWin = async (playerName) => {
     if (!order.includes(playerName)) return;
     if (currentUser.role !== "admin") {
-      alert("Chỉ admin mới có thể thao tác");
+      showToast("⚠️ Chỉ admin mới có thể thao tác", "warning");
       return;
     }
 
@@ -723,14 +846,15 @@
 
     if (!confirmed) return;
 
-    // Move turn to this player, simulating successes for those before
-    fastForwardToPlayer(playerName);
+    showLoading("Đang xử lý chiến thắng...");
 
-    // Emit socket event for win
+    // Emit socket event - server will handle game logic
     socket.emit("game:win", { playerName });
 
-    // Trigger win flow (local update)
-    handleWin();
+    // Server will broadcast game:updated and game:win events
+    setTimeout(() => {
+      hideLoading();
+    }, 500);
   };
 
   // Tap vs Swipe-left detection on list items
@@ -839,17 +963,17 @@
 
   backBtn.addEventListener("click", async () => {
     const confirmed = await customConfirm(
-      "Bạn có chắc muốn thoát? Dữ liệu game hiện tại sẽ bị mất.",
-      "⚠️ Thoát game"
+      "Bạn có chắc muốn kết thúc trận đấu? Dữ liệu game hiện tại sẽ bị mất.",
+      "⚠️ Kết thúc trận đấu"
     );
 
     if (confirmed) {
-      // Emit socket event to reset game (if admin)
+      // Emit socket event to reset game (admin only)
       if (currentUser.role === "admin") {
         socket.emit("game:reset");
       }
 
-      // Reset toàn bộ state
+      // Reset local state
       erroredThisRound = new Set();
       actedThisRound = new Set();
       roundNumber = 1;
@@ -857,7 +981,7 @@
 
       // Admin về setup, guest về empty state
       if (currentUser.role === "admin") {
-        showSetupSection(true);
+        showSetupSection();
         renderSetupList();
         renderAvailablePlayers();
       } else {
@@ -896,7 +1020,9 @@
       if (response.ok) {
         const user = await response.json();
         currentUser = user;
-        showSetupSection(true); // Admin logged in
+
+        // Admin logged in - check if there's an active game
+        await checkGameState();
         return true;
       }
     } catch (error) {
@@ -904,7 +1030,7 @@
     }
 
     // Not authenticated - show game or empty state
-    checkGameState();
+    await checkGameState();
     return false;
   };
 
@@ -915,44 +1041,67 @@
 
       if (gameState.isActive && gameState.order && gameState.order.length > 0) {
         // Có game đang chơi → Show game section
-        order = gameState.order;
-        currentIndex = gameState.currentIndex || 0;
-        roundNumber = gameState.roundNumber || 1;
-        matchNumber = gameState.matchNumber || 1;
-        movesCount = gameState.movesCount || 0;
-        actedThisRound = new Set(gameState.actedThisRound || []);
-        erroredThisRound = new Set(gameState.erroredThisRound || []);
-        breakerPlayer = gameState.breakerPlayer || null;
-
-        emptyState.classList.add("hidden");
-        setupSection.classList.add("hidden");
-        gameSection.classList.remove("hidden");
-        adminLoginBtn.classList.remove("hidden"); // Guest vẫn thấy button admin
-
-        // Guest không được thao tác - ẩn các controls
-        if (currentUser.role !== "admin") {
-          backBtn.classList.add("hidden");
-          document.querySelector(".hint").classList.add("hidden");
-        } else {
-          backBtn.classList.remove("hidden");
-          document.querySelector(".hint").classList.remove("hidden");
-        }
-
-        renderOrder();
-
-        const roundNumEl = document.getElementById("round-number");
-        if (roundNumEl) roundNumEl.textContent = String(roundNumber);
-
-        const matchNumEl = document.getElementById("match-number");
-        if (matchNumEl) matchNumEl.textContent = String(matchNumber);
+        showGameSection(gameState);
       } else {
-        // Không có game → Show empty state
-        showEmptyState();
+        // Không có game → Show empty/setup state
+        if (currentUser.role === "admin") {
+          showSetupSection();
+        } else {
+          showEmptyState();
+        }
       }
     } catch (error) {
       console.error("Failed to check game state:", error);
       showEmptyState();
     }
+  };
+
+  const showGameSection = (gameState) => {
+    // Update local state from server
+    order = gameState.order;
+    currentIndex = gameState.currentIndex || 0;
+    roundNumber = gameState.roundNumber || 1;
+    matchNumber = gameState.matchNumber || 1;
+    movesCount = gameState.movesCount || 0;
+    actedThisRound = new Set(gameState.actedThisRound || []);
+    erroredThisRound = new Set(gameState.erroredThisRound || []);
+    breakerPlayer = gameState.breakerPlayer || null;
+    lastActedPlayer = gameState.lastActedPlayer || null;
+
+    // Regenerate themes if needed (deterministic based on match number)
+    if (
+      Object.keys(playerThemes).length === 0 ||
+      playerThemes[order[0]] === undefined
+    ) {
+      console.log("🎨 Regenerating player themes");
+      playerThemes = shuffleThemes(order);
+    }
+
+    // Show game section
+    emptyState.classList.add("hidden");
+    setupSection.classList.add("hidden");
+    gameSection.classList.remove("hidden");
+
+    // Show/hide buttons based on role
+    if (currentUser.role === "admin") {
+      adminLoginBtn.classList.add("hidden");
+      logoutBtn.classList.add("hidden"); // Hide logout in game screen
+      backBtn.classList.remove("hidden");
+      document.querySelector(".hint").classList.remove("hidden");
+    } else {
+      adminLoginBtn.classList.remove("hidden"); // Guest can still login
+      logoutBtn.classList.add("hidden");
+      backBtn.classList.add("hidden");
+      document.querySelector(".hint").classList.add("hidden");
+    }
+
+    renderOrder();
+
+    const roundNumEl = document.getElementById("round-number");
+    if (roundNumEl) roundNumEl.textContent = String(roundNumber);
+
+    const matchNumEl = document.getElementById("match-number");
+    if (matchNumEl) matchNumEl.textContent = String(matchNumber);
   };
 
   const showEmptyState = () => {
@@ -973,17 +1122,17 @@
     }
   };
 
-  const showSetupSection = (isAdmin) => {
+  const showSetupSection = () => {
     emptyState.classList.add("hidden");
     setupSection.classList.remove("hidden");
     gameSection.classList.add("hidden");
 
-    if (isAdmin) {
-      // Admin: Show logout, hide login
+    // Only admin can see setup section
+    if (currentUser.role === "admin") {
       logoutBtn.classList.remove("hidden");
       adminLoginBtn.classList.add("hidden");
     } else {
-      // Guest: Hide logout, show login
+      // Guest should never see this, but just in case
       logoutBtn.classList.add("hidden");
       adminLoginBtn.classList.remove("hidden");
     }
@@ -1020,6 +1169,13 @@
 
     const username = document.getElementById("username").value;
     const password = document.getElementById("password").value;
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+
+    // Show loading state
+    submitBtn.disabled = true;
+    submitBtn.classList.add("loading");
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = "Đang đăng nhập...";
 
     try {
       const response = await fetch("/api/auth/login", {
@@ -1034,25 +1190,61 @@
         currentUser = data.user;
         loginModal.classList.add("hidden");
         loginForm.reset();
-        showSetupSection(true);
+
+        // Show loading overlay during reconnect
+        showLoading("Đang kết nối lại...");
+
+        // Force socket reconnect to get new session with admin role
+        socket.disconnect();
+
+        // Wait for reconnection to complete before proceeding
+        await new Promise((resolve) => {
+          socket.once("connect", () => {
+            console.log("🔄 Socket reconnected with admin session");
+            resolve();
+          });
+          socket.connect();
+        });
+
+        await checkGameState(); // Check if there's an active game
+        hideLoading();
+        showToast(`✅ Đăng nhập thành công`, "success");
         console.log("✅ Logged in as:", data.user.username);
       } else {
         loginError.textContent = data.error || "Đăng nhập thất bại";
         loginError.classList.remove("hidden");
+        showToast(`❌ ${data.error || "Đăng nhập thất bại"}`, "error");
       }
     } catch (error) {
       console.error("Login error:", error);
       loginError.textContent = "Lỗi kết nối server";
       loginError.classList.remove("hidden");
+      showToast("❌ Lỗi kết nối server", "error");
+    } finally {
+      // Reset loading state
+      submitBtn.disabled = false;
+      submitBtn.classList.remove("loading");
+      submitBtn.textContent = originalText;
     }
   });
 
   // Logout
   logoutBtn.addEventListener("click", async () => {
+    logoutBtn.disabled = true;
+    logoutBtn.classList.add("loading");
+    const originalText = logoutBtn.textContent;
+    logoutBtn.textContent = "Đang đăng xuất...";
+
     try {
       await fetch("/api/auth/logout", { method: "POST" });
+      showToast("👋 Đã đăng xuất", "info");
     } catch (error) {
       console.error("Logout error:", error);
+      showToast("❌ Lỗi khi đăng xuất", "error");
+    } finally {
+      logoutBtn.disabled = false;
+      logoutBtn.classList.remove("loading");
+      logoutBtn.textContent = originalText;
     }
 
     currentUser = { username: "Guest", role: "guest" };
