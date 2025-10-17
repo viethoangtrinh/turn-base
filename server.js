@@ -105,6 +105,16 @@ io.on("connection", (socket) => {
 // Make io accessible to routes
 app.set("io", io);
 
+// Check for timed out games every 1 minute
+setInterval(async () => {
+  try {
+    const GameState = require("./models/GameState");
+    await GameState.checkAndEndTimedOutGame(io);
+  } catch (error) {
+    console.error("⚠️  Error checking game timeout:", error.message);
+  }
+}, 60 * 1000); // 1 minute
+
 httpServer.listen(PORT, () => {
   console.log(`Turn-base app running on http://localhost:${PORT}`);
   console.log(`Socket.IO enabled for real-time sync`);

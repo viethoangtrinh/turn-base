@@ -57,6 +57,10 @@ const gameStateSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    lastActivityAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true,
@@ -86,8 +90,39 @@ gameStateSchema.statics.resetGame = async function () {
   state.lastActedPlayer = null;
   state.roundStarterName = null;
   state.isActive = false;
+  state.lastActivityAt = new Date();
   await state.save();
   return state;
+};
+
+// Static method to check and auto-end timed out games
+gameStateSchema.statics.checkAndEndTimedOutGame = async function (io) {
+  const state = await this.getSingleton();
+
+  if (!state.isActive) {
+    return null;
+  }
+
+  const TWO_HOURS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+  const now = new Date();
+  const timeSinceLastActivity = now - state.lastActivityAt;
+
+  if (timeSinceLastActivity >= TWO_HOURS) {
+    await this.resetGame();
+    const newState = await this.getSingleton();
+
+    if (io) {
+      io.emit("game:updated", newState);
+      io.emit("game:timeout", {
+        message:
+          "Trận đấu đã tự động kết thúc do không có hoạt động trong 2 giờ",
+      });
+    }
+
+    return newState;
+  }
+
+  return null;
 };
 
 module.exports = mongoose.model("GameState", gameStateSchema);

@@ -76,6 +76,11 @@
   });
 
   socket.on("admin:force-logout", async (data) => {
+    // Only process if this is the old admin session being kicked
+    if (currentUser.role !== "admin") {
+      return;
+    }
+
     console.warn("🚨 Force logout:", data.reason);
 
     await customConfirm(
@@ -127,6 +132,10 @@
 
   socket.on("game:win", (data) => {
     pushLog(`🏆 ${data.winner} thắng! Ván mới bắt đầu`);
+  });
+
+  socket.on("game:timeout", (data) => {
+    showToast(data.message, "warning", 5000);
   });
 
   let allPlayers = [];

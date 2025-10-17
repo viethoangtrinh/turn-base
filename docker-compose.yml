@@ -2,25 +2,21 @@ version: "3.8"
 
 services:
   app:
-    build: .
+    image: trinhviethoang16/turn-base:latest
+    container_name: turn-base
     ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - MONGODB_URI=${MONGODB_URI}
-      - SESSION_SECRET=${SESSION_SECRET}
-      - PORT=3000
+      - "${HOST_PORT}:${CONTAINER_PORT}"
+    env_file:
+      - .env
     depends_on:
       - mongo
     restart: unless-stopped
 
   mongo:
     image: mongo:7
+    container_name: turn-base-mongo
     volumes:
-      - mongo-data:/data/db
+      - ./data/database:/data/db
     restart: unless-stopped
     environment:
       - MONGO_INITDB_DATABASE=turn-base
-
-volumes:
-  mongo-data:

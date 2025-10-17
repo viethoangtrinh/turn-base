@@ -27,11 +27,20 @@ router.post("/login", async (req, res) => {
     // If admin and has active session → kick old session
     const io = req.app.get("io");
     if (user.role === "admin" && user.activeSessionId && io) {
-      // Emit event to force logout old admin
-      io.emit("admin:force-logout", {
-        oldSessionId: user.activeSessionId,
-        reason: "New admin login from another device",
-      });
+      const oldSessionId = user.activeSessionId;
+
+      // Find and disconnect all sockets with old session
+      const sockets = await io.fetchSockets();
+      for (const socket of sockets) {
+        const socketSession = socket.request.session;
+        if (socketSession && socketSession.id === oldSessionId) {
+          socket.emit("admin:force-logout", {
+            reason: "Admin khác đã đăng nhập từ thiết bị khác",
+          });
+          // Force disconnect after a delay to ensure message is sent
+          setTimeout(() => socket.disconnect(true), 100);
+        }
+      }
     }
 
     // Create new session

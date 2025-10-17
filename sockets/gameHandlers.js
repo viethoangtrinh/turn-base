@@ -62,7 +62,7 @@ module.exports = (io, socket) => {
         stateBefore,
         stateAfter: state.toObject(),
         matchNumber: state.matchNumber,
-        description: `${player} thành công (tự động)`,
+        description: `${player} không lỗi`,
       });
     }
   };
@@ -94,6 +94,7 @@ module.exports = (io, socket) => {
       state.erroredThisRound = [];
       state.breakerPlayer = order[0];
       state.isActive = true;
+      state.lastActivityAt = new Date();
 
       await state.save();
 
@@ -140,6 +141,7 @@ module.exports = (io, socket) => {
 
       state.movesCount += 1;
       state.lastActedPlayer = playerName;
+      state.lastActivityAt = new Date();
 
       handlePlayerError(state);
 
@@ -197,6 +199,7 @@ module.exports = (io, socket) => {
 
       state.movesCount += 1;
       state.lastActedPlayer = playerName;
+      state.lastActivityAt = new Date();
 
       handlePlayerSuccess(state);
 
@@ -256,6 +259,7 @@ module.exports = (io, socket) => {
       state.erroredThisRound = [];
       state.breakerPlayer = nextOrder[0]; // Winner is breaker
       state.isActive = true;
+      state.lastActivityAt = new Date();
 
       await state.save();
 
