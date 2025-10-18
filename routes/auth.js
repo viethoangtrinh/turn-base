@@ -24,24 +24,11 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // If admin and has active session → kick old session
-    const io = req.app.get("io");
-    if (user.role === "admin" && user.activeSessionId && io) {
-      const oldSessionId = user.activeSessionId;
-
-      // Find and disconnect all sockets with old session
-      const sockets = await io.fetchSockets();
-      for (const socket of sockets) {
-        const socketSession = socket.request.session;
-        if (socketSession && socketSession.id === oldSessionId) {
-          socket.emit("admin:force-logout", {
-            reason: "Admin khác đã đăng nhập từ thiết bị khác",
-          });
-          // Force disconnect after a delay to ensure message is sent
-          setTimeout(() => socket.disconnect(true), 100);
-        }
-      }
-    }
+    // Save OLD session ID before creating new one
+    const oldSessionId = user.activeSessionId;
+    console.log(
+      `[Login] User: ${user.username}, OldSessionId: ${oldSessionId}`
+    );
 
     // Create new session
     req.session.userId = user._id.toString();
@@ -57,9 +44,62 @@ router.post("/login", async (req, res) => {
     });
 
     const newSessionId = req.session.id;
+    console.log(`[Login] NewSessionId: ${newSessionId}`);
+
     user.activeSessionId = newSessionId;
     user.lastLoginAt = new Date();
     await user.save();
+
+    // THEN kick old session (if exists) - IMMEDIATELY, don't wait
+    const io = req.app.get("io");
+    if (
+      user.role === "admin" &&
+      oldSessionId &&
+      oldSessionId !== newSessionId &&
+      io
+    ) {
+      // Kick immediately without delay
+      setImmediate(async () => {
+        try {
+          const sockets = await io.fetchSockets();
+          for (const socket of sockets) {
+            const socketSession = socket.request.session;
+            // Double check: only kick if session ID matches OLD session
+            if (
+              socketSession &&
+              socketSession.id === oldSessionId &&
+              socketSession.id !== newSessionId
+            ) {
+              console.log(
+                `[Kick] Found old admin socket: ${socket.id}, SessionId: ${socketSession.id}`
+              );
+
+              // Emit force-logout event
+              socket.emit("admin:force-logout", {
+                reason: "Admin khác đã đăng nhập từ thiết bị khác",
+              });
+
+              // Wait a bit to ensure message is delivered before disconnect
+              setTimeout(() => {
+                console.log(`[Kick] Disconnecting socket: ${socket.id}`);
+
+                // Destroy old session from database
+                socketSession.destroy((err) => {
+                  if (err) {
+                    console.error("Failed to destroy old session:", err);
+                  }
+                });
+
+                // Force disconnect (allow reconnect)
+                socket.disconnect();
+              }, 200);
+            }
+          }
+        } catch (error) {
+          console.error("Error kicking old admin session:", error);
+        }
+      });
+    }
 
     res.json({
       message: "Login successful",
@@ -80,17 +120,20 @@ router.post("/logout", async (req, res) => {
   const role = req.session.role;
 
   try {
-    // Clear activeSessionId from database if this is admin
-    if (userId) {
+    // Check if this admin session is still active (not replaced by another admin)
+    let isActiveAdminSession = false;
+    if (userId && role === "admin") {
       const user = await User.findById(userId);
       if (user && user.activeSessionId === sessionId) {
+        isActiveAdminSession = true;
         user.activeSessionId = null;
         await user.save();
       }
     }
 
-    // If admin logs out, end any active game
-    if (role === "admin") {
+    // Only reset game if this is the ACTIVE admin session
+    // (Not when admin was kicked by another admin)
+    if (isActiveAdminSession) {
       const gameState = await GameState.getSingleton();
       if (gameState.isActive) {
         await GameState.resetGame();

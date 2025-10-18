@@ -46,17 +46,31 @@
     document.body.classList.remove("loading");
   };
 
+  let wasDisconnected = false;
+
   socket.on("connect", () => {
+    const wasReconnect = wasDisconnected;
+    wasDisconnected = false;
     isConnected = true;
     hideConnectionBanner();
 
     if (socket.io.engine.transport.name === "websocket") {
       showToast("✅ Kết nối thành công", "success", 2000);
     }
+
+    // Only fetch game state if this was a REAL reconnect (not initial connect or login)
+    if (wasReconnect) {
+      showToast("🔄 Đã kết nối lại", "success", 2000);
+      // Wait for auth:status to update currentUser first
+      setTimeout(() => {
+        checkGameState();
+      }, 300);
+    }
   });
 
   socket.on("disconnect", () => {
     isConnected = false;
+    wasDisconnected = true;
     showConnectionBanner("⚠️ Mất kết nối - Đang kết nối lại...", false);
   });
 
@@ -88,12 +102,8 @@
       "⚠️ Đăng xuất"
     );
 
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
-
+    // Don't call logout API - session already destroyed by server
+    // Just update local state
     currentUser = { username: "Guest", role: "guest" };
     showToast(
       "⚠️ Bạn đã bị đăng xuất do admin khác đăng nhập",
@@ -845,7 +855,7 @@
     }
   };
 
-  const showGameSection = (gameState) => {
+  const showGameSection = async (gameState) => {
     // Update local state from server
     order = gameState.order;
     currentIndex = gameState.currentIndex || 0;
@@ -890,6 +900,9 @@
 
     const matchNumEl = document.getElementById("match-number");
     if (matchNumEl) matchNumEl.textContent = String(matchNumber);
+
+    // Refresh game history
+    await refreshGameHistory();
   };
 
   const showEmptyState = () => {
@@ -976,6 +989,9 @@
 
         // Show loading overlay during reconnect
         showLoading("Đang kết nối lại...");
+
+        // Clear wasDisconnected flag to prevent reconnect logic
+        wasDisconnected = false;
 
         // Force socket reconnect to get new session with admin role
         socket.disconnect();
